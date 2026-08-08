@@ -27,3 +27,8 @@ coverage/
 # OS / editor noise
 .DS_Store
 .vscode/
+
+# Keep docs/, but ignore temp files
+docs/
+docs/*.tmp
+docs/*.bak

@@ -18,12 +18,25 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, name: "Aequidrape", mode: "simulation" });
 });
 
-app.get("/api/garments", (_req, res) => {
-  res.json({ garments: getAllGarments() });
+app.get("/api/products", (_req, res) => {
+  res.json(getAllGarments());
+});
+
+app.get("/api/products/:id", (req, res) => {
+  const garment = getGarmentById(req.params.id);
+
+  if (!garment) {
+    res.status(404).json({ error: "Garment not found." });
+    return;
+  }
+
+  res.json(garment);
 });
 
 app.post("/api/evaluate", (req, res) => {
-  const { profile, garmentId } = req.body ?? {};
+  const body = req.body ?? {};
+  const profile = body.profile ?? body.user_profile;
+  const garmentId = body.garmentId ?? body.garment_id;
 
   if (!profile || typeof profile !== "object") {
     res.status(400).json({ error: "A user profile is required." });
@@ -38,7 +51,16 @@ app.post("/api/evaluate", (req, res) => {
 
   const safeProfile = profile as UserProfile;
   const result = generateFullReview(safeProfile, garment);
-  res.json(result);
+  res.json({
+    ...result.insight,
+    user_profile: result.user_profile,
+    garment: result.garment,
+    timestamp: result.timestamp,
+    mode: result.mode,
+    audio_summary: result.audio_summary,
+    markdown_summary: result.markdown_summary,
+    seller_email_template: result.seller_email_template,
+  });
 });
 
 app.get("*", (_req, res) => {
