@@ -1,460 +1,420 @@
-// Centralized application state
+/**
+ * Aequidrape — production frontend.
+ * Routing, state, VTO studio, rendering, accessibility.
+ * Backend contract: GET /api/products | GET /api/garments | POST /api/evaluate
+ * YouCam plug-in point: setTryOnResult(url)
+ * No alerts, no emojis, no paid AI. All failures degrade gracefully.
+ */
+
 const STATE = {
-  currentPage: 'shop',
-  userProfile: JSON.parse(localStorage.getItem('userProfile')) || null,
+  page: 'home',
+  profile: JSON.parse(localStorage.getItem('aequidrape_profile') || 'null'),
   products: [],
-  currentProduct: null,
+  photo: { key: 'standing', src: '/demo-images/01-standing-original.jpg', custom: false },
+  garmentId: null,
+  insight: null,
+  current: null,
+  filters: new Set(),
 };
 
-// DOM Elements
-const dom = {
-  appContainer: () => document.getElementById('app'),
-  profileBadge: () => document.getElementById('profile-badge'),
-  shopGrid: () => document.getElementById('product-grid'),
-  productDetailContainer: () => document.getElementById('product-detail-container'),
-  // Add other frequently accessed elements as needed
+const PHOTOS = {
+  standing: '/demo-images/01-standing-original.jpg',
+  seated: '/demo-images/02-seated-original.jpg',
+  wheelchair: '/demo-images/03-wheelchair-original.jpg',
+  prosthetic: '/demo-images/04-prosthetic-original.jpg',
 };
 
-// Client-side fallback scoring function
-function fallbackEvaluateGarment(garment) {
-  // This is a simple heuristic and not a full replacement for the backend rules
-  let score = 0;
-  let compatibility = [];
-  let risks = [];
-  let summary = '';
+const DEMO_PRODUCTS = [
+  { id: 'adaptive-jacket-001', name: 'Magnetic Front Jacket', category: 'outerwear', color: 'rgba(201,122,60,0.55)', closure_type: 'magnetic', fabric: 'Technical cotton blend', stretch: 'moderate', tags: ['magnetic', 'tag-free'], seams: 'Flat back seams', back_rise: 'high', pocket_access: 'Side seams, seated-reachable', price: 140, description: 'Magnetic closure jacket with high back rise, built for seated comfort and one-handed dressing.' },
+  { id: 'seated-pants-001', name: 'Seated Cargo Pant', category: 'bottom', color: 'rgba(74,144,164,0.5)', closure_type: 'hook-and-loop', fabric: 'Stretch twill', stretch: 'high', tags: ['hook-and-loop', 'high-stretch'], seams: 'Minimal inner-thigh', back_rise: 'high', pocket_access: 'Hip pockets, seated-reachable', price: 110, description: 'High back rise cargo pant with hook-and-loop closures and a reinforced gusset.' },
+  { id: 'onehanded-shirt-001', name: 'One-Handed Shirt', category: 'top', color: 'rgba(139,163,157,0.55)', closure_type: 'magnetic', fabric: 'Soft cotton jersey', stretch: 'slight', tags: ['magnetic', 'tag-free'], seams: 'Soft flat seams', back_rise: 'medium', pocket_access: 'Chest pocket, magnetic flap', price: 85, description: 'Magnetic button-front shirt with a soft collar, designed for limited dexterity.' },
+  { id: 'accessible-hoodie-001', name: 'No-Pull Hoodie', category: 'outerwear', color: 'rgba(87,83,75,0.45)', closure_type: 'magnetic', fabric: 'Organic cotton fleece', stretch: 'high', tags: ['magnetic', 'high-stretch', 'tag-free'], seams: 'Flat throughout', back_rise: 'medium', pocket_access: 'Deep kangaroo', price: 130, description: 'Full-zip magnetic hoodie. No drawstrings, roomy sleeves, high stretch.' },
+  { id: 'adaptive-leggings-001', name: 'Side-Zip Legging', category: 'bottom', color: 'rgba(217,100,89,0.4)', closure_type: 'elastic + side zippers', fabric: 'High-stretch nylon', stretch: 'maximum', tags: ['zipper', 'high-stretch'], seams: 'Seam-free thigh option', back_rise: 'high', pocket_access: 'Side medical-device pocket', price: 95, description: 'Maximum-stretch legging with removable side zippers for braces and prosthetics.' },
+];
 
-  if (STATE.userProfile) {
-    if (STATE.userProfile.dexterity === 'limited' && garment.closure_type.toLowerCase().includes('magnetic')) {
-      score += 2;
-      compatibility.push('Magnetic closure suits limited dexterity');
-    }
-    if (STATE.userProfile.posture === 'seated' && garment.back_rise === 'high') {
-      score += 2;
-      compatibility.push('High back rise suits seated posture');
-    }
-    if (STATE.userProfile.sensory.includes('tag-sensitive') && garment.tags.includes('tag-free')) {
-      score += 1;
-      compatibility.push('Tag-free design addresses sensitivity');
-    }
-  }
+const ART = {
+  jacket: '<path d="M50 8 L36 14 L22 24 L16 54 L28 58 L30 42 L30 112 L70 112 L70 42 L72 58 L84 54 L78 24 L64 14 Z M50 8 L44 16 L50 22 L56 16 Z"/><line x1="50" y1="22" x2="50" y2="112"/>',
+  shirt: '<path d="M50 10 L38 14 L26 22 L22 44 L32 48 L34 36 L34 108 L66 108 L66 36 L68 48 L78 44 L74 22 L62 14 Z M38 14 L50 30 L62 14"/>',
+  pants: '<path d="M34 10 L66 10 L70 60 L68 112 L56 112 L52 62 L48 62 L44 112 L32 112 L30 60 Z"/><line x1="34" y1="20" x2="66" y2="20"/>',
+  hoodie: '<path d="M50 6 C40 6 34 14 34 20 L24 26 L18 54 L30 58 L32 44 L32 112 L68 112 L68 44 L70 58 L82 54 L76 26 L66 20 C66 14 60 6 50 6 Z M42 20 C42 12 58 12 58 20"/><path d="M40 88 L60 88 L60 106 L40 106 Z"/>',
+  leggings: '<path d="M36 10 L64 10 L66 56 L62 112 L54 112 L51 60 L49 60 L46 112 L38 112 L34 56 Z"/><line x1="36" y1="30" x2="44" y2="108"/><line x1="64" y1="30" x2="56" y2="108"/>',
+};
 
-  if (score >= 4) {
-    return {
-      insight: {
-        compatibility,
-        risks,
-        questions_for_seller: ['Can you confirm the ease of use for someone with limited dexterity?'],
-        confidence: 'high',
-        summary: 'This garment may work well for you based on your profile.'
-      },
-      audio_summary: 'This garment may work well for you based on your profile.',
-      markdown_summary: '# Fallback Summary\n\nThis garment may work well for you based on your profile.',
-      seller_email_template: 'Hello, I am interested in this item but need to check accessibility details.'
-    };
-  } else if (score >= 2) {
-    return {
-      insight: {
-        compatibility,
-        risks,
-        questions_for_seller: ['Can you confirm the fit for my specific needs?'],
-        confidence: 'moderate',
-        summary: 'This garment may work for you, but check a few details first.'
-      },
-      audio_summary: 'This garment may work for you, but check a few details first.',
-      markdown_summary: '# Fallback Summary\n\nThis garment may work for you, but check a few details first.',
-      seller_email_template: 'Hello, I am interested in this item but need to check accessibility details.'
-    };
-  } else {
-    return {
-      insight: {
-        compatibility: [],
-        risks: ['No strong compatibility markers found for your profile.'],
-        questions_for_seller: ['Is this suitable for my access needs?'],
-        confidence: 'low',
-        summary: 'This garment may not be a good fit for your access needs.'
-      },
-      audio_summary: 'This garment may not be a good fit for your access needs.',
-      markdown_summary: '# Fallback Summary\n\nThis garment may not be a good fit for your access needs.',
-      seller_email_template: 'Hello, I am interested in this item but need to check accessibility details.'
-    };
-  }
-}
+const ICONS = {
+  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  ask: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+};
 
+/* ================= boot ================= */
+document.addEventListener('DOMContentLoaded', async () => {
+  if (window.AOS) AOS.init({ duration: 700, easing: 'ease-out-cubic', once: true, disable: matchMedia('(prefers-reduced-motion: reduce)').matches });
+  updateProfileBadge();
+  await loadProducts();
+  renderGarmentList();
+  window.addEventListener('hashchange', () => navigateTo(location.hash.slice(1) || 'home'));
+  navigateTo(location.hash.slice(1) || 'home');
+});
 
-// API Integration Functions
+/* ================= API normalization ================= */
 async function loadProducts() {
+  // Tolerates both server shapes: /api/products (array) and /api/garments ({garments}).
   try {
-    const response = await fetch('/api/products');
-    if (!response.ok) throw new Error(`API error: ${response.status}`);
-    STATE.products = await response.json();
-  } catch (error) {
-    console.warn('Failed to load products from API, using fallback:', error);
-    // Fallback data
-    STATE.products = [
-      {
-        id: "adaptive-jacket-001",
-        name: "Adaptive Jacket Demo",
-        price: 99.99,
-        image_url: "/demo-images/jacket.jpg",
-        closure_type: "Magnetic",
-        back_rise: "High",
-        stretch: "High",
-        tags: ["tag-free", "soft"]
-      },
-      {
-        id: "adaptive-shirt-002",
-        name: "Adaptive Shirt Demo",
-        price: 49.99,
-        image_url: "/demo-images/shirt.jpg",
-        closure_type: "Zipper",
-        back_rise: "Medium",
-        stretch: "Moderate",
-        tags: ["flat-seams-back"]
-      },
-      {
-        id: "adaptive-pants-003",
-        name: "Adaptive Pants Demo",
-        price: 79.99,
-        image_url: "/demo-images/pants.jpg",
-        closure_type: "Hook and Loop",
-        back_rise: "High",
-        stretch: "Maximum",
-        tags: ["tag-free", "soft"]
-      },
-      {
-        id: "adaptive-dress-004",
-        name: "Adaptive Dress Demo",
-        price: 89.99,
-        image_url: "/demo-images/dress.jpg",
-        closure_type: "Button",
-        back_rise: "Low",
-        stretch: "None",
-        tags: []
-      },
-      {
-        id: "adaptive-skirt-005",
-        name: "Adaptive Skirt Demo",
-        price: 69.99,
-        image_url: "/demo-images/skirt.jpg",
-        closure_type: "Elastic",
-        back_rise: "Medium",
-        stretch: "High",
-        tags: ["soft"]
+    const res = await fetch('/api/products');
+    if (res.ok) {
+      const data = await res.json();
+      STATE.products = Array.isArray(data) ? data : (data.garments || data.products || []);
+    }
+  } catch { /* offline: fall through */ }
+  if (!STATE.products.length) {
+    try {
+      const res = await fetch('/api/garments');
+      if (res.ok) {
+        const data = await res.json();
+        STATE.products = Array.isArray(data) ? data : (data.garments || []);
       }
-    ];
+    } catch { /* offline: fall through */ }
   }
-  renderShopPage();
+  if (!STATE.products.length) STATE.products = DEMO_PRODUCTS;
+  renderProducts();
 }
 
-async function evaluateGarment(garmentId) {
-  if (!STATE.userProfile) {
-    console.error('Cannot evaluate without a user profile.');
-    return null;
-  }
+function catalog() { return STATE.products.length ? STATE.products : DEMO_PRODUCTS; }
+function priceOf(g) { return g.price ?? (parseInt(String(g.price_range || '').replace(/\D/g, ''), 10) || 0); }
+function hay(g) { return JSON.stringify(g).toLowerCase(); }
+function artFor(g) {
+  if (g.art) return ART[g.art];
+  const n = (g.name || '').toLowerCase();
+  if (n.includes('hoodie')) return ART.hoodie;
+  if (n.includes('legging')) return ART.leggings;
+  if (g.category === 'top') return ART.shirt;
+  if (g.category === 'bottom') return ART.pants;
+  return ART.jacket;
+}
 
+/* ================= status lines (no alerts) ================= */
+function statusLine(id, anchorSelector, role) {
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('p');
+    el.id = id;
+    el.setAttribute('role', role);
+    el.style.cssText = 'font-size:13px;font-weight:600;margin:10px 0 0;color:var(--ink-2);';
+    const anchor = document.querySelector(anchorSelector);
+    if (anchor) anchor.insertAdjacentElement('afterend', el);
+  }
+  return el;
+}
+function studioStatus(msg) { const el = statusLine('studio-status', '#run-vto', 'status'); el.textContent = msg; }
+function profileStatus(msg) { const el = statusLine('profile-status', '#profile-form', 'alert'); el.textContent = msg; }
+
+/* ================= routing + focus management ================= */
+function navigateTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const el = document.getElementById(page + '-page');
+  if (!el) return;
+  el.classList.add('active');
+  STATE.page = page;
+  history.replaceState(null, '', '#' + page);
+  scrollTo(0, 0);
+  const heading = el.querySelector('h1, h2');
+  if (heading) { heading.setAttribute('tabindex', '-1'); heading.focus({ preventScroll: true }); }
+  if (page === 'shop') renderProducts();
+  if (page === 'home') { renderProducts('featured-products', catalog().slice(0, 4)); if (window.AOS) AOS.refresh(); }
+}
+
+/* ================= profile ================= */
+function updateProfileBadge() {
+  const badge = document.getElementById('profile-badge');
+  const text = document.getElementById('badge-text');
+  if (!badge || !text) return;
+  if (STATE.profile) {
+    const p = { seated: 'Seated', standing: 'Standing', mixed: 'Mixed' }[STATE.profile.posture] || 'Set';
+    const d = { standard: 'Standard', limited: 'Limited', one_handed: '1-hand' }[STATE.profile.dexterity] || '';
+    text.textContent = p + ' · ' + d;
+    badge.classList.add('set');
+  } else { text.textContent = 'Set profile'; badge.classList.remove('set'); }
+}
+
+function saveProfile() {
+  const f = document.getElementById('profile-form');
+  const posture = f.querySelector('input[name="posture"]:checked')?.value;
+  const dexterity = f.querySelector('input[name="dexterity"]:checked')?.value;
+  if (!posture || !dexterity) {
+    profileStatus('Choose a posture and a dexterity level to continue.');
+    (f.querySelector('input[name="posture"]:checked') ? f.querySelector('input[name="dexterity"]') : f.querySelector('input[name="posture"]'))?.focus();
+    return;
+  }
+  STATE.profile = {
+    posture, dexterity,
+    sensory: [...f.querySelectorAll('input[name="sensory"]:checked')].map(i => i.value),
+    mobility_aids: [...f.querySelectorAll('input[name="mobility_aids"]:checked')].map(i => i.value),
+    fit_concerns: [...f.querySelectorAll('input[name="fit_concerns"]:checked')].map(i => i.value),
+  };
+  localStorage.setItem('aequidrape_profile', JSON.stringify(STATE.profile));
+  updateProfileBadge();
+  renderProducts();
+  navigateTo('shop');
+}
+
+/* ================= studio ================= */
+function selectPhoto(key, btn) {
+  STATE.photo = { key, src: PHOTOS[key], custom: false };
+  document.querySelectorAll('.thumb-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('stage-before').src = PHOTOS[key];
+  document.getElementById('stage-after').src = PHOTOS[key];
+  document.getElementById('consent-row').hidden = true;
+  resetStage();
+}
+
+function uploadPhoto() { document.getElementById('photo-upload').click(); }
+
+function onPhotoFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  STATE.photo = { key: 'custom', src: URL.createObjectURL(file), custom: true };
+  document.querySelectorAll('.thumb-btn').forEach(b => b.classList.remove('active'));
+  input.closest('.thumb-col').querySelector('.upload').classList.add('active');
+  document.getElementById('stage-before').src = STATE.photo.src;
+  document.getElementById('stage-after').src = STATE.photo.src;
+  document.getElementById('consent-row').hidden = false;
+  resetStage();
+}
+
+function renderGarmentList() {
+  const list = document.getElementById('garment-list');
+  if (!list) return;
+  list.innerHTML = catalog().slice(0, 4).map(g => `
+    <button class="garment-opt ${STATE.garmentId === g.id ? 'active' : ''}" onclick="selectGarment('${g.id}', this)">
+      <span><strong>${g.name}</strong><small>${g.closure_type} · ${g.stretch} stretch</small></span>
+      <span class="price">$${priceOf(g)}</span>
+    </button>`).join('');
+}
+
+function selectGarment(id, btn) {
+  STATE.garmentId = id;
+  document.querySelectorAll('.garment-opt').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const g = catalog().find(p => p.id === id);
+  if (g && g.color) document.getElementById('drape-svg').setAttribute('fill', g.color);
+  studioStatus('');
+}
+
+function resetStage() {
+  ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = true; });
+  const tb = document.getElementById('tag-before'); if (tb) tb.hidden = false;
+  const mg = document.getElementById('mini-gauge'); if (mg) mg.hidden = true;
+  const gc = document.getElementById('gauge-card'); if (gc) gc.hidden = true;
+}
+
+function setCmp(v) { document.getElementById('stage').style.setProperty('--pos', v + '%'); }
+
+function runTryOn() {
+  if (STATE.photo.custom && !document.getElementById('consent').checked) {
+    studioStatus('Confirm the consent box to use your own photo, or pick one of the demo photos.');
+    return;
+  }
+  if (!STATE.garmentId) { studioStatus('Choose a garment first.'); return; }
+  const stage = document.getElementById('stage');
+  stage.classList.add('loading');
+  studioStatus('Generating preview...');
+  setTimeout(async () => {
+    stage.classList.remove('loading');
+    ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = false; });
+    setCmp(50);
+    studioStatus('Drag the slider to compare original and preview.');
+    await evaluate();
+  }, 900);
+}
+
+/** YouCam integration point: call your /api/try-on, then setTryOnResult(url). */
+function setTryOnResult(url) {
+  document.getElementById('stage-after').src = url;
+  document.getElementById('drape-svg').style.display = 'none';
+}
+
+/* ================= evaluation ================= */
+async function evaluate() {
+  const g = catalog().find(p => p.id === STATE.garmentId);
+  let insight = null;
   try {
-    const response = await fetch('/api/evaluate', {
+    const res = await fetch('/api/evaluate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user_profile: STATE.userProfile,
-        garment_id: garmentId
-      })
+        user_profile: STATE.profile || { posture: 'seated', dexterity: 'limited', sensory: [], mobility_aids: ['wheelchair'], fit_concerns: [] },
+        garment_id: STATE.garmentId,
+      }),
     });
-
-    if (!response.ok) throw new Error(`API error: ${response.status}`);
-    return await response.json();
-  } catch (error) {
-    console.warn('API evaluation failed, using fallback:', error);
-    const garment = STATE.products.find(p => p.id === garmentId);
-    if (garment) {
-      return {
-        ...fallbackEvaluateGarment(garment),
-        garment: garment,
-        timestamp: new Date().toISOString(),
-        mode: 'fallback'
-      };
+    if (res.ok) {
+      const data = await res.json();
+      insight = data.insight || data; // tolerates nested and flattened server shapes
     }
-    return null;
+  } catch { /* offline: local rules below */ }
+  if (!insight || !insight.compatibility) insight = localInsight(g);
+  STATE.insight = insight;
+  renderGauge(insight, g);
+}
+
+function localInsight(g) {
+  if (!g) return { compatibility: [], risks: [], questions_for_seller: [], confidence: 'low', summary: 'No garment selected.' };
+  const p = STATE.profile || { posture: 'seated', dexterity: 'limited', sensory: ['tag-free'], mobility_aids: ['wheelchair'], fit_concerns: ['back-coverage'] };
+  const h = hay(g);
+  const ok = [], warn = [], ask = [];
+  if (p.dexterity !== 'standard' && /magnetic|hook|zipper/.test(g.closure_type)) ok.push(g.closure_type + ' closure supports easier dressing.');
+  if (p.posture === 'seated' && g.back_rise === 'high') ok.push('High back rise supports seated coverage.');
+  if (p.sensory.includes('tag-free') && h.includes('tag-free')) ok.push('Tag-free construction reduces irritation.');
+  if (p.posture === 'seated' && g.back_rise !== 'high') warn.push('Back rise may sit low while seated.');
+  if (p.mobility_aids.includes('prosthetic') && g.stretch === 'slight') warn.push('Low stretch may limit room around a brace or prosthetic.');
+  if (p.fit_concerns.includes('pocket-access')) ask.push('Are pockets reachable from a seated position?');
+  ask.push('What is the seated back length in centimetres?');
+  const confidence = warn.length === 0 && ok.length >= 2 ? 'high' : warn.length > ok.length ? 'low' : 'moderate';
+  return { compatibility: ok, risks: warn, questions_for_seller: ask, confidence, summary: `${g.name}: ${ok.join(' ')} ${warn.join(' ')} Confidence ${confidence}.` };
+}
+
+function fillList(id, items, kind) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const title = el.querySelector('h4');
+  el.innerHTML = (title ? title.outerHTML : '') +
+    (items && items.length ? items.map(t => `<li>${ICONS[kind]}<span>${t}</span></li>`).join('') : '<li><span>Nothing flagged.</span></li>');
+}
+
+function renderGauge(ins, g) {
+  const fill = { high: 'high', moderate: 'moderate', low: 'low' }[ins.confidence] || 'moderate';
+  const mg = document.getElementById('mini-gauge');
+  if (mg) {
+    mg.hidden = false;
+    document.getElementById('mini-conf-text').textContent = ins.confidence;
+    document.getElementById('mini-conf-fill').className = 'fill ' + fill;
   }
+  const card = document.getElementById('gauge-card');
+  if (!card) return;
+  card.hidden = false;
+  const gn = document.getElementById('gauge-garment-name'); if (gn) gn.textContent = g ? g.name : '';
+  fillList('gauge-ok', ins.compatibility, 'ok');
+  fillList('gauge-warn', ins.risks, 'warn');
+  fillList('gauge-ask', ins.questions_for_seller, 'ask');
+  document.getElementById('gauge-fill').className = 'fill ' + fill;
+  document.getElementById('gauge-conf').textContent = ins.confidence;
 }
-
-
-// DOM Rendering Functions
-function renderShopPage() {
-  const container = dom.shopGrid();
-  if (!container) return;
-  
-  container.innerHTML = ''; // Clear existing content
-  STATE.products.forEach(product => {
-    container.appendChild(renderProductCard(product));
-  });
-}
-
-function renderProductCard(product) {
-  const card = document.createElement('div');
-  card.className = 'product-card';
-  card.setAttribute('tabindex', '0'); // Make focusable for keyboard nav
-  card.setAttribute('role', 'button'); // Semantically a button
-  card.setAttribute('aria-label', `View details for ${product.name}`); // ARIA label
-
-  // Calculate a simple compatibility indicator if profile exists
-  let compatText = '';
-  if (STATE.userProfile) {
-    // Use the fallback logic for a quick indicator
-    const tempResult = fallbackEvaluateGarment(product);
-    compatText = ` (${tempResult.insight.confidence} match)`;
-  }
-
-  card.innerHTML = `
-    <img src="${product.image_url}" alt="${product.name}">
-    <h3>${product.name}</h3>
-    <p class="price">$${product.price.toFixed(2)}</p>
-    <p class="compat-indicator">${compatText}</p>
-  `;
-
-  card.addEventListener('click', () => {
-    STATE.currentProduct = product;
-    window.location.hash = `#detail/${product.id}`;
-  });
-
-  return card;
-}
-
-function displayProductDetail() {
-  const product = STATE.currentProduct;
-  if (!product || !dom.productDetailContainer()) return;
-
-  const container = dom.productDetailContainer();
-  container.innerHTML = `
-    <div class="product-header">
-      <button onclick="history.back()" aria-label="Go back">← Back</button>
-      <h1>${product.name}</h1>
-    </div>
-    <div class="product-content">
-      <div class="image-section">
-        <img src="${product.image_url}" alt="${product.name}">
-      </div>
-      <div class="details-section">
-        <p class="price">$${product.price.toFixed(2)}</p>
-        <div class="specs">
-          <h3>Specs</h3>
-          <ul>
-            <li>Closure: ${product.closure_type}</li>
-            <li>Back Rise: ${product.back_rise}</li>
-            <li>Stretch: ${product.stretch}</li>
-            <li>Tags: ${product.tags.join(', ')}</li>
-          </ul>
-        </div>
-        <div class="tabs">
-          <button class="tab-button active" data-tab="overview" onclick="switchTab('overview')" role="tab" aria-selected="true" aria-controls="panel-overview">Overview</button>
-          <button class="tab-button" data-tab="compatibility" onclick="switchTab('compatibility')" role="tab" aria-selected="false" aria-controls="panel-compatibility">Compatibility</button>
-        </div>
-        <div id="panel-overview" class="tab-panel active" role="tabpanel">
-          <p>Detailed description would go here...</p>
-        </div>
-        <div id="panel-compatibility" class="tab-panel" role="tabpanel" style="display: none;">
-          <div id="compatibility-gauge"></div>
-          <button id="speak-summary-btn" onclick="speakSummary()">Speak Summary</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  // Load and render compatibility data
-  loadAndRenderCompatibility();
-}
-
-async function loadAndRenderCompatibility() {
-  if (!STATE.currentProduct) return;
-  const result = await evaluateGarment(STATE.currentProduct.id);
-  if (result) {
-    renderCompatibilityGauge(result.insight);
-  }
-}
-
-function renderCompatibilityGauge(insight) {
-  const container = document.getElementById('compatibility-gauge');
-  if (!container) return;
-
-  // Map confidence to a percentage for the progress bar
-  let confidencePercent;
-  switch (insight.confidence) {
-    case 'high':
-      confidencePercent = 85;
-      break;
-    case 'moderate':
-      confidencePercent = 50;
-      break;
-    case 'low':
-      confidencePercent = 20;
-      break;
-    default:
-      confidencePercent = 0;
-  }
-
-  // Map confidence to CSS class
-  let confidenceClass;
-  switch (insight.confidence) {
-    case 'high':
-      confidenceClass = 'gauge-high';
-      break;
-    case 'moderate':
-      confidenceClass = 'gauge-moderate';
-      break;
-    case 'low':
-      confidenceClass = 'gauge-low';
-      break;
-    default:
-      confidenceClass = 'gauge-unknown';
-  }
-
-  container.innerHTML = `
-    <h3>Accessibility Fit</h3>
-    <p>Confidence: <span id="confidence-label">${insight.confidence.charAt(0).toUpperCase() + insight.confidence.slice(1)}</span></p>
-    <div class="progress-bar">
-      <div class="progress ${confidenceClass}" style="width: ${confidencePercent}%"></div>
-    </div>
-    <p>${insight.summary}</p>
-    <button id="toggle-details-btn" onclick="toggleGaugeDetails()">Show Details</button>
-    <div id="gauge-details" style="display: none;">
-      <h4>Strengths</h4>
-      <ul>
-        ${insight.compatibility.map(item => `<li>${item}</li>`).join('')}
-      </ul>
-      <h4>Potential Risks</h4>
-      <ul>
-        ${insight.risks.map(item => `<li>${item}</li>`).join('')}
-      </ul>
-      <h4>Questions for Seller</h4>
-      <ol>
-        ${insight.questions_for_seller.map(question => `<li>${question}</li>`).join('')}
-      </ol>
-    </div>
-  `;
-}
-
-function saveProfile(event) {
-  event.preventDefault(); // Prevent default form submission
-
-  const formData = new FormData(event.target);
-  const profile = {
-    posture: formData.get('posture'),
-    dexterity: formData.get('dexterity'),
-    sensory: Array.from(document.querySelectorAll('input[name="sensory"]:checked')).map(cb => cb.value),
-    mobility_aids: Array.from(document.querySelectorAll('input[name="mobility_aids"]:checked')).map(cb => cb.value),
-    fit_concerns: Array.from(document.querySelectorAll('input[name="fit_concerns"]:checked')).map(cb => cb.value),
-  };
-
-  // Validation
-  if (!profile.posture || !profile.dexterity) {
-    // In a real app, we'd show this in the UI
-    console.error('Posture and Dexterity are required fields.');
-    return;
-  }
-
-  STATE.userProfile = profile;
-  localStorage.setItem('userProfile', JSON.stringify(profile));
-
-  updateProfileBadge();
-  window.location.hash = '#shop';
-}
-
-// UI Interaction Functions
-function switchTab(tabName) {
-  document.querySelectorAll('.tab-button').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tabName);
-    btn.setAttribute('aria-selected', btn.dataset.tab === tabName);
-  });
-  document.querySelectorAll('.tab-panel').forEach(panel => {
-    panel.classList.toggle('active', panel.id === `panel-${tabName}`);
-    panel.style.display = panel.id === `panel-${tabName}` ? 'block' : 'none';
-    panel.setAttribute('aria-hidden', panel.id !== `panel-${tabName}`);
-  });
-}
-
-let currentSpeechUtterance = null;
 
 function speakSummary() {
-  const summaryElement = document.querySelector('#compatibility-gauge p');
-  if (!summaryElement) return;
-
-  const summaryText = summaryElement.textContent;
-
-  if (window.speechSynthesis.speaking) {
-    window.speechSynthesis.cancel();
-  }
-
-  if (currentSpeechUtterance && currentSpeechUtterance.text === summaryText) {
-     // If it was the same text, stop it
-     currentSpeechUtterance = null;
-     return;
-  }
-
-  currentSpeechUtterance = new SpeechSynthesisUtterance(summaryText);
-  window.speechSynthesis.speak(currentSpeechUtterance);
+  if (!STATE.insight) return;
+  if (speechSynthesis.speaking) { speechSynthesis.cancel(); return; }
+  speechSynthesis.speak(new SpeechSynthesisUtterance(STATE.insight.summary));
 }
 
-function toggleGaugeDetails() {
-  const detailsDiv = document.getElementById('gauge-details');
-  const toggleBtn = document.getElementById('toggle-details-btn');
-  if (detailsDiv && toggleBtn) {
-    const isVisible = detailsDiv.style.display !== 'none';
-    detailsDiv.style.display = isVisible ? 'none' : 'block';
-    toggleBtn.textContent = isVisible ? 'Show Details' : 'Hide Details';
-    toggleBtn.setAttribute('aria-expanded', !isVisible);
-  }
+/* ================= products ================= */
+function compat(g) {
+  if (!STATE.profile) return null;
+  const p = STATE.profile; let m = 0, r = 0;
+  if (p.dexterity !== 'standard' && /magnetic|hook|zipper/.test(g.closure_type)) m++;
+  if (p.dexterity !== 'standard' && /button/.test(g.closure_type)) r++;
+  if (p.posture === 'seated' && g.back_rise === 'high') m++;
+  if (p.posture === 'seated' && g.back_rise === 'low') r++;
+  if (p.mobility_aids.length && /high|maximum/.test(g.stretch)) m++;
+  return r > m ? 'low' : m >= 2 ? 'high' : 'moderate';
 }
 
-function updateProfileBadge() {
-  const badge = dom.profileBadge();
-  if (badge) {
-    if (STATE.userProfile) {
-      badge.textContent = `${STATE.userProfile.posture}, ${STATE.userProfile.dexterity}`;
-      badge.classList.remove('empty');
-    } else {
-      badge.textContent = 'Set Profile';
-      badge.classList.add('empty');
-    }
+function renderProducts(containerId = 'products', list = null) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let items = list || [...catalog()];
+  if (!list && STATE.filters.size) {
+    items = items.filter(g => {
+      const h = hay(g);
+      return [...STATE.filters].every(f => h.includes(f.replace('-loop', '').replace('zipper', 'zipper')) || h.includes(f));
+    });
   }
+  const sort = document.getElementById('sort-select')?.value;
+  if (sort === 'price-low') items.sort((a, b) => priceOf(a) - priceOf(b));
+  if (sort === 'price-high') items.sort((a, b) => priceOf(b) - priceOf(a));
+  container.innerHTML = items.map(g => {
+    const c = compat(g);
+    return `
+    <article class="p-card">
+      <div class="p-media">
+        <span class="flag">${g.closure_type}</span>
+        <svg class="art" viewBox="0 0 100 120" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">${artFor(g)}</svg>
+        <button class="quick" onclick="showProduct('${g.id}')">View garment</button>
+      </div>
+      <div class="p-body">
+        <h3>${g.name}</h3>
+        <p class="meta">${g.fabric} · ${g.stretch} stretch</p>
+        <div class="row">
+          <span class="price">$${priceOf(g)}</span>
+          ${c ? `<span class="compat ${c}"><i></i>${{ high: 'Likely fit', moderate: 'Check details', low: 'Ask seller' }[c]}</span>` : ''}
+        </div>
+      </div>
+    </article>`;
+  }).join('') || '<p style="color:var(--ink-2)">No garments match the selected filters.</p>';
 }
 
-function handleHashChange() {
-  const hash = window.location.hash;
-  if (hash.startsWith('#detail/')) {
-    const productId = hash.split('/')[1];
-    STATE.currentProduct = STATE.products.find(p => p.id === productId) || null;
-    if (STATE.currentProduct) {
-      STATE.currentPage = 'detail';
-      displayProductDetail();
-    } else {
-      window.location.hash = '#shop';
-    }
-  } else if (hash === '#profile') {
-    STATE.currentPage = 'profile';
-    // Assuming profile page is handled by HTML and we just show it
-    document.querySelectorAll('.page').forEach(page => page.style.display = 'none');
-    document.getElementById('profile-page')?.style.display = 'block';
-  } else {
-    STATE.currentPage = 'shop';
-    document.querySelectorAll('.page').forEach(page => page.style.display = 'none');
-    document.getElementById('shop-page')?.style.display = 'block';
-    if (STATE.products.length === 0) {
-      loadProducts(); // Load if not already loaded
-    } else {
-      renderShopPage(); // Re-render if products are already in state
-    }
-  }
+function toggleFilter(btn) {
+  const f = btn.dataset.filter;
+  STATE.filters.has(f) ? STATE.filters.delete(f) : STATE.filters.add(f);
+  btn.classList.toggle('active');
+  renderProducts();
 }
 
-// App Initialization
-document.addEventListener('DOMContentLoaded', () => {
+function sortProducts() { renderProducts(); }
+
+/* ================= product detail ================= */
+function showProduct(id) {
+  const g = catalog().find(p => p.id === id);
+  if (!g) return;
+  STATE.current = g;
+  document.getElementById('breadcrumb-text').textContent = g.name;
+  document.getElementById('product-name').textContent = g.name;
+  document.getElementById('product-price').textContent = '$' + priceOf(g);
+  document.getElementById('product-description').textContent = g.description || '';
+  document.getElementById('detail-art').innerHTML = `<svg viewBox="0 0 100 120" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round">${artFor(g)}</svg>`;
+  const specs = [g.closure_type, g.back_rise, g.stretch, g.seams, g.pocket_access];
+  ['spec-closure', 'spec-back-rise', 'spec-stretch', 'spec-seams', 'spec-pockets'].forEach((sid, i) => {
+    const el = document.getElementById(sid); if (el) el.textContent = specs[i] || '—';
+  });
+  const ins = localInsight(g);
+  fillList('d-ok', ins.compatibility, 'ok');
+  fillList('d-warn', ins.risks, 'warn');
+  fillList('d-ask', ins.questions_for_seller, 'ask');
+  document.getElementById('d-fill').className = 'fill ' + ins.confidence;
+  document.getElementById('d-conf').textContent = ins.confidence;
+  document.getElementById('questions-list').innerHTML = ins.questions_for_seller.map(q => `<label class="q-item"><input type="checkbox" /><span>${q}</span></label>`).join('');
+  navigateTo('product');
+}
+
+function tryOnThis() {
+  if (STATE.current) selectGarment(STATE.current.id, null);
+  navigateTo('home');
+  setTimeout(() => document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' }), 60);
+}
+
+/* ================= tabs + gauge toggle (event-safe) ================= */
+function toggleGaugeDetails(e) {
+  const body = document.getElementById('gauge-details');
+  if (!body) return;
+  const open = body.hidden;
+  body.hidden = !open;
+  e.currentTarget.setAttribute('aria-expanded', String(open));
+}
+
+function switchTab(name, e) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+  document.getElementById(name)?.classList.add('active');
+  e.currentTarget.classList.add('active');
+  e.currentTarget.setAttribute('aria-selected', 'true');
+}
+
+/* ================= editorial shortcuts ================= */
+function applyNeed(kind) {
+  if (!STATE.profile) STATE.profile = { posture: 'seated', dexterity: 'standard', sensory: [], mobility_aids: [], fit_concerns: [] };
+  if (kind === 'seated') STATE.profile.posture = 'seated';
+  if (kind === 'one_handed') STATE.profile.dexterity = 'one_handed';
+  if (kind === 'sensory') STATE.profile.sensory = ['tag-free'];
+  if (kind === 'prosthetic') STATE.profile.mobility_aids = ['prosthetic'];
   updateProfileBadge();
-  window.addEventListener('hashchange', handleHashChange);
-  // Initialize the app by triggering the hashchange handler
-  if (window.location.hash) {
-    handleHashChange();
-  } else {
-    window.location.hash = '#shop'; // Default route
-  }
-});
+  navigateTo('shop');
+}
