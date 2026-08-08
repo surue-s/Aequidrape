@@ -1,0 +1,29 @@
+details.md
+Apis.md
+
+# Step logs / scratch files
+*.swp
+*.swo
+.idea/
+.cursor/
+*.tmp
+
+# Python / local env
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Node / TypeScript
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Environment / logs
+.env
+.env.*
+*.log
+
+# OS / editor noise
+.DS_Store
+.vscode/

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Aequidrape helps shoppers assess adaptive clothing fit, comfort, and access needs before buying." />
+    <title>Aequidrape | Adaptive Fit Review</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="hero">
+      <div class="hero__content">
+        <p class="eyebrow">YouCam Apparel VTO Hackathon</p>
+        <h1>Aequidrape</h1>
+        <p class="hero__lead">
+          A decision layer for adaptive clothing: profile your access needs, compare garment metadata,
+          and get plain-language guidance before you buy.
+        </p>
+        <div class="hero__badges" aria-label="Project highlights">
+          <span>Offline-first rules engine</span>
+          <span>No body reshaping</span>
+          <span>Keyboard accessible</span>
+          <span>VTO optional</span>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="layout">
+      <section class="panel panel--form" aria-labelledby="profile-heading">
+        <div class="section-header">
+          <p class="eyebrow">Step 1</p>
+          <h2 id="profile-heading">Needs profile</h2>
+          <p>Choose the access needs you want the garment checked against.</p>
+        </div>
+
+        <form id="assessment-form" class="form" novalidate>
+          <fieldset>
+            <legend>Posture</legend>
+            <div class="radio-grid" role="radiogroup" aria-label="Posture">
+              <label><input type="radio" name="posture" value="seated" checked /> Seated</label>
+              <label><input type="radio" name="posture" value="standing" /> Standing</label>
+              <label><input type="radio" name="posture" value="mixed" /> Mixed</label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Dexterity</legend>
+            <div class="radio-grid" role="radiogroup" aria-label="Dexterity">
+              <label><input type="radio" name="dexterity" value="standard" checked /> Standard</label>
+              <label><input type="radio" name="dexterity" value="limited" /> Limited</label>
+              <label><input type="radio" name="dexterity" value="one_handed" /> One-handed</label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Sensory needs</legend>
+            <div class="check-grid">
+              <label><input type="checkbox" name="sensory" value="tag-sensitive" /> Tag-sensitive</label>
+              <label><input type="checkbox" name="sensory" value="seam-sensitive" /> Seam-sensitive</label>
+              <label><input type="checkbox" name="sensory" value="texture-sensitive" /> Texture-sensitive</label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Mobility aids</legend>
+            <div class="check-grid">
+              <label><input type="checkbox" name="mobility_aids" value="wheelchair" /> Wheelchair</label>
+              <label><input type="checkbox" name="mobility_aids" value="cane" /> Cane</label>
+              <label><input type="checkbox" name="mobility_aids" value="crutches" /> Crutches</label>
+              <label><input type="checkbox" name="mobility_aids" value="prosthetic" /> Prosthetic</label>
+              <label><input type="checkbox" name="mobility_aids" value="walker" /> Walker</label>
+              <label><input type="checkbox" name="mobility_aids" value="leg-brace" /> Leg brace</label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Fit concerns</legend>
+            <div class="check-grid">
+              <label><input type="checkbox" name="fit_concerns" value="shoulder-access" /> Shoulder access</label>
+              <label><input type="checkbox" name="fit_concerns" value="back-coverage" /> Back coverage</label>
+              <label><input type="checkbox" name="fit_concerns" value="pocket-access" /> Pocket access</label>
+              <label><input type="checkbox" name="fit_concerns" value="hip-fit" /> Hip fit</label>
+            </div>
+          </fieldset>
+
+          <label class="field">
+            <span>Garment</span>
+            <select id="garment-select" name="garmentId" aria-describedby="garment-help"></select>
+            <small id="garment-help">Adaptive Front-Closure Jacket is locked for the demo contrast.</small>
+          </label>
+
+          <div class="actions">
+            <button type="submit" class="button button--primary">Run assessment</button>
+            <button type="reset" class="button button--ghost">Reset</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel panel--results" aria-labelledby="results-heading">
+        <div class="section-header">
+          <p class="eyebrow">Step 2</p>
+          <h2 id="results-heading">Result preview</h2>
+          <p>The result panel updates after you run the assessment.</p>
+        </div>
+
+        <div id="status" class="status">Ready for a profile.</div>
+
+        <div id="result-empty" class="empty-state">
+          <h3>Nothing assessed yet</h3>
+          <p>Choose needs, select a garment, and run the assessment to see compatibility, risks, and seller questions.</p>
+        </div>
+
+        <article id="result-card" class="result-card" hidden>
+          <div class="result-card__header">
+            <h3 id="result-garment-name"></h3>
+            <span id="result-confidence" class="confidence-pill"></span>
+          </div>
+
+          <p id="result-summary" class="summary"></p>
+
+          <div class="result-grid">
+            <section>
+              <h4>Compatibility</h4>
+              <ul id="result-compatibility"></ul>
+            </section>
+            <section>
+              <h4>Risks to check</h4>
+              <ul id="result-risks"></ul>
+            </section>
+            <section>
+              <h4>Questions for seller</h4>
+              <ul id="result-questions"></ul>
+            </section>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
