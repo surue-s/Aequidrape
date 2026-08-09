@@ -52,8 +52,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateProfileBadge();
   await loadProducts();
   renderGarmentList();
-  window.addEventListener('hashchange', () => navigateTo(location.hash.slice(1) || 'home'));
-  navigateTo(location.hash.slice(1) || 'home');
+  window.addEventListener('hashchange', routeFromHash);
+  routeFromHash();
 });
 
 /* ================= API normalization ================= */
@@ -110,9 +110,9 @@ function profileStatus(msg) { const el = statusLine('profile-status', '#profile-
 
 /* ================= routing + focus management ================= */
 function navigateTo(page) {
+  let el = document.getElementById(page + '-page');
+  if (!el) { page = 'home'; el = document.getElementById('home-page'); }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  const el = document.getElementById(page + '-page');
-  if (!el) return;
   el.classList.add('active');
   STATE.page = page;
   history.replaceState(null, '', '#' + page);
@@ -121,6 +121,18 @@ function navigateTo(page) {
   if (heading) { heading.setAttribute('tabindex', '-1'); heading.focus({ preventScroll: true }); }
   if (page === 'shop') renderProducts();
   if (page === 'home') { renderProducts('featured-products', catalog().slice(0, 4)); if (window.AOS) AOS.refresh(); }
+  if (!document.querySelector('.page.active')) document.getElementById('home-page').classList.add('active');
+}
+
+function routeFromHash() {
+  const hash = location.hash.slice(1);
+  const page = (!hash || hash === 'studio' || hash === 'about') ? 'home'
+    : (document.getElementById(hash + '-page') ? hash : 'home');
+  navigateTo(page);
+  const anchor = hash && document.getElementById(hash);
+  if (anchor && page !== hash) {
+    setTimeout(() => anchor.scrollIntoView({ behavior: 'smooth' }), 80);
+  }
 }
 
 /* ================= profile ================= */
@@ -254,6 +266,8 @@ async function evaluate() {
   } catch { /* offline: local rules below */ }
   if (!insight || !insight.compatibility) insight = localInsight(g);
   STATE.insight = insight;
+  STATE.reviewMeta = insightRaw; // the full parsed response, before flattening
+  renderReviewExtras();
   renderGauge(insight, g);
 }
 
@@ -300,12 +314,101 @@ function renderGauge(ins, g) {
   document.getElementById('gauge-conf').textContent = ins.confidence;
 }
 
+function setAudioLabels(t) { const b = document.getElementById('audio-btn'); if (b) b.lastChild.textContent = ' ' + t; }
 function speakSummary() {
   if (!STATE.insight) return;
-  if (speechSynthesis.speaking) { speechSynthesis.cancel(); return; }
-  speechSynthesis.speak(new SpeechSynthesisUtterance(STATE.insight.summary));
+  if (speechSynthesis.speaking) { speechSynthesis.cancel(); setAudioLabels('Listen'); return; }
+  const u = new SpeechSynthesisUtterance(STATE.insight.summary);
+  u.onend = () => setAudioLabels('Listen');
+  speechSynthesis.speak(u);
+  setAudioLabels('Stop');
 }
 
+/* ================= review extras: email, report, copy ================= */
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function md2html(md) {
+  const lines = esc(md).split('\n');
+  const out = []; let inList = false;
+  for (const line of lines) {
+    if (/^\s*[-*] /.test(line)) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push('<li>' + line.replace(/^\s*[-*] /, '') + '</li>');
+    } else {
+      if (inList) { out.push('</ul>'); inList = false; }
+      const h = line.match(/^#{1,3} (.*)$/);
+      if (h) out.push('<h3>' + h[1] + '</h3>');
+      else if (line.trim()) out.push('<p>' + line + '</p>');
+    }
+  }
+  if (inList) out.push('</ul>');
+  return out.join('');
+}
+
+function buildEmailTemplate(g, ins) {
+  return [
+    'Subject: Fit and access questions before ordering - ' + g.name,
+    '',
+    'Hello,',
+    '',
+    'I am considering this garment and rely on the following for dressing and comfort. Could you confirm:',
+    ...ins.questions_for_seller.map(q => '- ' + q),
+    '',
+    'Listed details I depend on (please correct if wrong):',
+    '- Closure: ' + g.closure_type,
+    '- Back rise: ' + g.back_rise,
+    '- Stretch: ' + g.stretch,
+    '',
+    'Thank you.',
+  ].join('\n');
+}
+
+function defaultReport(g, ins) {
+  return [
+    '# Aequidrape assessment - ' + g.name,
+    '',
+    '## Works for you',
+    ...(ins.compatibility.length ? ins.compatibility.map(t => '- ' + t) : ['- Nothing strong from available data.']),
+    '',
+    '## Worth checking',
+    ...(ins.risks.length ? ins.risks.map(t => '- ' + t) : ['- Nothing flagged.']),
+    '',
+    '## Ask the seller',
+    ...ins.questions_for_seller.map(t => '- ' + t),
+    '',
+    'Confidence: ' + ins.confidence + '. This is decision support, not a fit guarantee.',
+  ].join('\n');
+}
+
+function renderReviewExtras() {
+  const g = STATE.current || catalog().find(p => p.id === STATE.garmentId);
+  const ins = STATE.insight;
+  const box = document.getElementById('review-extras');
+  if (!g || !ins || !box) return;
+  const meta = STATE.reviewMeta || {};
+  STATE.emailTemplate = meta.seller_email_template || buildEmailTemplate(g, ins);
+  STATE.reportMd = meta.markdown_summary || defaultReport(g, ins);
+  document.getElementById('report-body').innerHTML = md2html(STATE.reportMd);
+  box.hidden = false;
+}
+
+async function copyText(text, msg) {
+  const status = document.getElementById('extras-status');
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'absolute'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+  }
+  status.textContent = msg;
+  setTimeout(() => { if (status.textContent === msg) status.textContent = ''; }, 2500);
+}
+
+function copySellerEmail() { if (STATE.emailTemplate) copyText(STATE.emailTemplate, 'Seller email copied. Paste it into your message to the retailer.'); }
+function copyReport() { if (STATE.reportMd) copyText(STATE.reportMd, 'Full report copied as markdown.'); }
 /* ================= products ================= */
 function compat(g) {
   if (!STATE.profile) return null;
@@ -376,6 +479,9 @@ function showProduct(id) {
     const el = document.getElementById(sid); if (el) el.textContent = specs[i] || '—';
   });
   const ins = localInsight(g);
+  STATE.insight = ins;
+  STATE.reviewMeta = null;
+  renderReviewExtras();
   fillList('d-ok', ins.compatibility, 'ok');
   fillList('d-warn', ins.risks, 'warn');
   fillList('d-ask', ins.questions_for_seller, 'ask');

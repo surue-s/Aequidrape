@@ -436,7 +436,26 @@
                 <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
               </button>
             </div>
-
+                        <!-- TAKE-WITH-YOU SURFACE -->
+            <div class="review-extras" id="review-extras" hidden>
+              <h3 class="extras-title">Take this assessment with you</h3>
+              <div class="extras-actions">
+                <button class="btn-ghost-pill" onclick="copySellerEmail()">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  Copy seller email
+                </button>
+                <button class="btn-ghost-pill" onclick="copyReport()">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                  Copy full report
+                </button>
+              </div>
+              <p class="extras-status" id="extras-status" role="status"></p>
+              <details class="extras-report">
+                <summary>View full report</summary>
+                <div class="report-body" id="report-body"></div>
+              </details>
+            </div> 
+            
             <div class="tabs-bar" role="tablist">
               <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('description', event)">Description</button>
               <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('questions', event)">Questions for seller</button>
@@ -457,7 +476,6 @@
     </section>
   </main>
 
-  <!-- ================= FOOTER ================= -->
   <footer>
     <div class="container">
       <p class="foot-word">aequidrape<span>.</span></p>

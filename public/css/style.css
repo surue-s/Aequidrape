@@ -504,3 +504,23 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; margin-top: 
   .studio-head { flex-direction: column; align-items: flex-start; }
   .stat-row { gap: 28px; }
 }
+/* Review extras  */
+.review-extras {
+  border: 1px dashed var(--line-strong); border-radius: var(--r-l);
+  background: var(--bg-soft); padding: 20px 24px; margin-bottom: 36px;
+}
+.extras-title { font-family: var(--font-display); font-size: 1.2rem; font-weight: 500; margin-bottom: 14px; }
+.extras-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.extras-status { font-size: 13px; font-weight: 600; color: var(--ink-2); min-height: 20px; margin: 10px 0 0; }
+.extras-report summary {
+  font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px;
+  color: var(--ink-2); transition: color var(--t-fast) var(--ease);
+}
+.extras-report summary:hover { color: var(--ink); }
+.report-body { font-size: 14px; color: var(--ink-2); line-height: 1.6; padding-top: 12px; }
+.report-body h3 { font-size: 14px; font-weight: 700; margin: 14px 0 6px; color: var(--ink); }
+.report-body ul { list-style: disc; padding-left: 20px; margin: 6px 0; }
+.report-body p { margin: 6px 0; }
+
+/* Keyboard visibility for the invisible compare slider */
+.stage:has(.cmp-range:focus-visible) { outline: 2px solid var(--ink); outline-offset: 3px; }
