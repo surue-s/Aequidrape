@@ -1,27 +1,34 @@
-/**
- * Aequidrape Frontend App
- * Unified logic for Shop, Profile, Gauge, and the new Adaptive Studio.
- */
+/* Aequidrape — single source of truth for frontend logic */
 
 const STATE = {
-  current_page: 'home',
-  user_profile: JSON.parse(localStorage.getItem('aequidrape_profile')) || null,
+  page: 'home',
+  profile: JSON.parse(localStorage.getItem('aequidrape_profile') || 'null'),
   products: [],
-  current_product: null,
-  current_review: null,
-  // Studio State
-  studio: {
-    personBase64: null,
-    garmentBase64: null,
-    modifiedGarmentUrl: null
-  }
+  garmentId: null,
+  current: null,
+  insight: null,
+  filters: new Set(),
+  photo: { key: 'standing', src: '/demo-images/01-standing-original.jpg', custom: false, base64: null },
+  garment: { base64: null, modifiedUrl: null, custom: false },
 };
 
-// ========== INITIALIZATION ==========
+const PHOTOS = {
+  standing: '/demo-images/01-standing-original.jpg',
+  seated: '/demo-images/02-seated-original.jpg',
+  wheelchair: '/demo-images/03-wheelchair-original.jpg',
+  prosthetic: '/demo-images/04-prosthetic-original.jpg',
+};
+
+const DEX_MAP = ['standard', 'limited', 'one_handed'];
+const DEX_LABELS = ['Full use of both hands', 'Limited grip or strength', 'One hand available'];
+
+/* ---------- boot ---------- */
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadProducts();
+  if (window.AOS) AOS.init({ duration: 700, once: true, disable: matchMedia('(prefers-reduced-motion: reduce)').matches });
   updateProfileBadge();
-  setupNavigation();
+  await loadProducts();
+  renderGarmentList();
+  window.addEventListener('hashchange', () => navigateTo(location.hash.slice(1) || 'home'));
   navigateTo(location.hash.slice(1) || 'home');
 });
 
@@ -29,265 +36,354 @@ async function loadProducts() {
   try {
     const res = await fetch('/api/products');
     if (res.ok) STATE.products = await res.json();
-  } catch (e) { console.warn('API failed, using fallback'); }
-  
-  if (!STATE.products.length) {
-    STATE.products = [
-      { id: 'adaptive-jacket-001', name: 'Adaptive Jacket', price_range: '$140', closure_type: 'magnetic', back_rise: 'high', stretch: 'moderate', image_path: 'garments/jacket.jpg', description: 'Magnetic closure jacket.' },
-      { id: 'seated-pants-001', name: 'Seated Cargo Pant', price_range: '$110', closure_type: 'hook-and-loop', back_rise: 'high', stretch: 'high', image_path: 'garments/pants.jpg', description: 'High back rise cargo pant.' },
-      { id: 'onehanded-shirt-001', name: 'One-Handed Shirt', price_range: '$85', closure_type: 'magnetic', back_rise: 'medium', stretch: 'slight', image_path: 'garments/shirt.jpg', description: 'Magnetic button-front shirt.' },
-      { id: 'accessible-hoodie-001', name: 'No-Pull Hoodie', price_range: '$130', closure_type: 'magnetic', back_rise: 'medium', stretch: 'high', image_path: 'garments/hoodie.jpg', description: 'Full-zip magnetic hoodie.' },
-      { id: 'adaptive-leggings-001', name: 'Side-Zip Legging', price_range: '$95', closure_type: 'side zippers', back_rise: 'high', stretch: 'maximum', image_path: 'garments/leggings.jpg', description: 'Maximum-stretch legging.' }
-    ];
-  }
-  renderAllProducts();
+  } catch {}
+  if (!STATE.products.length) STATE.products = [
+    { id: 'adaptive-jacket-001', name: 'Jacket', closure_type: 'zipper', stretch: 'moderate', back_rise: 'medium', seams: 'Standard', pocket_access: 'Side pockets', price: 140, description: 'Everyday zip jacket.', image_path: 'garments/jacket.jpg' },
+  ];
+  renderProducts();
 }
 
-// ========== NAVIGATION ==========
-function setupNavigation() {
-  window.addEventListener('hashchange', () => navigateTo(location.hash.slice(1) || 'home'));
-}
+function catalog() { return STATE.products; }
+function priceOf(g) { return g.price ?? 0; }
 
+/* ---------- routing ---------- */
 function navigateTo(page) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  let el = document.getElementById(`${page}-page`);
+  let el = document.getElementById(page + '-page');
   if (!el) { page = 'home'; el = document.getElementById('home-page'); }
-  
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
-  STATE.current_page = page;
+  STATE.page = page;
   history.replaceState(null, '', '#' + page);
   scrollTo(0, 0);
-
-  if (page === 'shop' || page === 'home') renderAllProducts();
-  if (page === 'product') displayProductDetail();
+  document.body.classList.remove('nav-open');
+  if (page === 'shop') renderProducts();
+  if (page === 'home') renderProducts('featured-products', catalog().slice(0, 4));
+  if (window.AOS) AOS.refresh();
 }
 
-// ========== PROFILE MANAGEMENT ==========
+function toggleMobNav() { document.body.classList.toggle('nav-open'); }
+
+/* ---------- profile ---------- */
+function updateDexLabel(v) { const el = document.getElementById('dex-label'); if (el) el.textContent = DEX_LABELS[+v]; }
+
 function updateProfileBadge() {
-  const badge = document.getElementById('badge-text');
-  if (!badge) return;
-  if (STATE.user_profile) {
-    const p = STATE.user_profile.posture === 'seated' ? 'Seated' : 'Standing';
-    const d = STATE.user_profile.dexterity === 'limited' ? 'Limited' : 'Standard';
-    badge.textContent = `${p} · ${d}`;
-  } else {
-    badge.textContent = 'Set profile';
-  }
+  const text = document.getElementById('badge-text');
+  const badge = document.getElementById('profile-badge');
+  if (STATE.profile) {
+    const p = { seated: 'Seated', standing: 'Standing', mixed: 'Mixed' }[STATE.profile.posture] || 'Set';
+    const d = { standard: 'Full use', limited: 'Limited', one_handed: '1-hand' }[STATE.profile.dexterity] || '';
+    text.textContent = p + ' · ' + d;
+    badge.classList.add('set');
+  } else { text.textContent = 'Set profile'; badge.classList.remove('set'); }
 }
 
 function saveProfile() {
-  const form = document.getElementById('profile-form');
-  if (!form) return;
-  const profile = {
-    posture: form.querySelector('input[name="posture"]:checked')?.value,
-    dexterity: form.querySelector('input[name="dexterity"]:checked')?.value,
-    sensory: Array.from(form.querySelectorAll('input[name="sensory"]:checked')).map(i => i.value),
-    mobility_aids: Array.from(form.querySelectorAll('input[name="mobility_aids"]:checked')).map(i => i.value),
-    fit_concerns: Array.from(form.querySelectorAll('input[name="fit_concerns"]:checked')).map(i => i.value),
+  const f = document.getElementById('profile-form');
+  const posture = f.querySelector('input[name="posture"]:checked')?.value;
+  if (!posture) { document.getElementById('profile-status').textContent = 'Choose a posture to continue.'; return; }
+  STATE.profile = {
+    posture,
+    dexterity: DEX_MAP[+document.getElementById('dex-range').value],
+    dex_notes: document.getElementById('dex-notes').value.trim(),
+    sensory: [...f.querySelectorAll('input[name="sensory"]:checked')].map(i => i.value),
+    mobility_aids: [...f.querySelectorAll('input[name="mobility_aids"]:checked')].map(i => i.value),
+    aid_other: document.getElementById('aid-other').value.trim(),
+    fit_concerns: [...f.querySelectorAll('input[name="fit_concerns"]:checked')].map(i => i.value),
   };
-  if (!profile.posture || !profile.dexterity) { alert('Select posture and dexterity.'); return; }
-  STATE.user_profile = profile;
-  localStorage.setItem('aequidrape_profile', JSON.stringify(profile));
+  localStorage.setItem('aequidrape_profile', JSON.stringify(STATE.profile));
   updateProfileBadge();
   navigateTo('shop');
 }
 
-// ========== PRODUCT RENDERING ==========
-function renderAllProducts() {
-  const containers = [document.getElementById('products'), document.getElementById('featured-products')];
-  containers.forEach(container => {
-    if (!container) return;
-    container.innerHTML = STATE.products.map(p => `
-      <div class="product-card" onclick="showProduct('${p.id}')" style="cursor:pointer;">
-        <div class="product-image">
-          <img src="/${p.image_path}" alt="${p.name}" onerror="this.style.display='none'; this.parentElement.innerHTML='👕'" />
-        </div>
-        <div class="product-info">
-          <h3 class="product-name">${p.name}</h3>
-          <div class="product-specs">
-            <span class="product-spec-tag">${p.closure_type}</span>
-            <span class="product-spec-tag">${p.stretch} stretch</span>
-          </div>
-        </div>
-      </div>
-    `).join('');
+function applyNeed(kind) {
+  if (!STATE.profile) STATE.profile = { posture: 'seated', dexterity: 'standard', sensory: [], mobility_aids: [], fit_concerns: [], dex_notes: '', aid_other: '' };
+  if (kind === 'seated') STATE.profile.posture = 'seated';
+  if (kind === 'one_handed') STATE.profile.dexterity = 'one_handed';
+  if (kind === 'sensory') STATE.profile.sensory = ['tag-free'];
+  if (kind === 'prosthetic') STATE.profile.mobility_aids = ['prosthetic-leg'];
+  updateProfileBadge();
+  navigateTo('shop');
+}
+
+/* ---------- studio: photo ---------- */
+function selectPhoto(key, btn) {
+  STATE.photo = { key, src: PHOTOS[key], custom: false, base64: null };
+  document.querySelectorAll('.thumb-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('stage-before').src = PHOTOS[key];
+  document.getElementById('consent-row').hidden = true;
+  resetStage();
+}
+
+function uploadPhoto() { document.getElementById('photo-upload').click(); }
+
+function onPhotoFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    STATE.photo = { key: 'custom', src: ev.target.result, custom: true, base64: ev.target.result };
+    document.querySelectorAll('.thumb-btn').forEach(b => b.classList.remove('active'));
+    input.closest('.thumb-col').querySelector('.upload').classList.add('active');
+    document.getElementById('stage-before').src = ev.target.result;
+    document.getElementById('consent-row').hidden = false;
+    resetStage();
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ---------- studio: garment ---------- */
+function renderGarmentList() {
+  const list = document.getElementById('garment-list');
+  if (!list) return;
+  list.innerHTML = catalog().map(g => `
+    <button class="garment-opt ${STATE.garmentId === g.id ? 'active' : ''}" onclick="selectGarment('${g.id}', this)">
+      <span><strong>${g.name}</strong><small>${g.closure_type}</small></span>
+      <span class="price">$${priceOf(g)}</span>
+    </button>`).join('');
+}
+
+function selectGarment(id, btn) {
+  STATE.garmentId = id;
+  STATE.garment = { base64: null, modifiedUrl: null, custom: false };
+  document.querySelectorAll('.garment-opt').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.getElementById('garment-preview').hidden = true;
+  document.getElementById('modify-status').textContent = '';
+}
+
+function onGarmentFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    STATE.garmentId = null;
+    STATE.garment = { base64: ev.target.result, modifiedUrl: null, custom: true };
+    document.querySelectorAll('.garment-opt').forEach(b => b.classList.remove('active'));
+    const prev = document.getElementById('garment-preview');
+    prev.hidden = false;
+    document.getElementById('garment-preview-img').src = ev.target.result;
+    document.getElementById('garment-preview-label').textContent = 'Your garment';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function toBase64(url) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  return new Promise((resolve) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.readAsDataURL(blob);
   });
 }
 
-function showProduct(id) {
-  STATE.current_product = STATE.products.find(p => p.id === id);
-  if (STATE.current_product) navigateTo('product');
+async function currentGarmentBase64() {
+  if (STATE.garment.base64) return STATE.garment.base64;
+  const g = catalog().find(p => p.id === STATE.garmentId);
+  if (g && g.image_path) return toBase64('/' + g.image_path);
+  return null;
 }
 
-function displayProductDetail() {
-  const p = STATE.current_product;
-  if (!p) return;
-  
-  const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  setTxt('breadcrumb-text', p.name);
-  setTxt('product-name', p.name);
-  setTxt('product-price', p.price_range || '$0');
-  setTxt('product-description', p.description || '');
-  setTxt('spec-closure', p.closure_type);
-  setTxt('spec-back-rise', p.back_rise);
-  setTxt('spec-stretch', p.stretch);
-  
-  const imgEl = document.getElementById('product-main-image');
-  if (imgEl) imgEl.innerHTML = `<img src="/${p.image_path}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='👕'" />`;
-
-  if (STATE.user_profile) displayCompatibilityGauge(p);
-}
-
-async function displayCompatibilityGauge(product) {
-  let review = null;
-  try {
-    const res = await fetch('/api/evaluate', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_profile: STATE.user_profile, garment_id: product.id })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      review = data.insight || data;
-    }
-  } catch (e) { console.warn('Evaluate failed'); }
-
-  if (!review) review = { compatibility: ['Magnetic closure'], risks: [], confidence: 'moderate', questions_for_seller: ['What is the seated back length?'] };
-  
-  const gauge = document.getElementById('product-gauge');
-  if (!gauge) return;
-  
-  gauge.innerHTML = `
-    <div class="gauge-header">
-      <h2 class="gauge-title"><span class="gauge-title-icon">${review.confidence === 'high' ? '✓' : '⚠'}</span> ${review.confidence === 'high' ? 'Likely compatible' : 'Check details'}</h2>
-      <button class="btn btn-text" onclick="toggleGaugeDetails()" aria-expanded="false">Details</button>
-    </div>
-    <div class="gauge-content" id="gauge-details" style="display:none">
-      <div class="gauge-section"><h4 class="gauge-section-title">Strengths</h4>${review.compatibility.map(c => `<div class="gauge-item"><span class="gauge-item-icon gauge-item-positive">✓</span><span>${c}</span></div>`).join('')}</div>
-      <div class="gauge-section"><h4 class="gauge-section-title">Risks</h4>${review.risks.map(r => `<div class="gauge-item"><span class="gauge-item-icon gauge-item-warning">⚠</span><span>${r}</span></div>`).join('')}</div>
-    </div>
-    <div class="gauge-footer">
-      <span class="gauge-confidence-label">Confidence</span>
-      <div class="gauge-confidence-bar"><div class="gauge-confidence-fill ${review.confidence}"></div></div>
-      <span style="text-transform:capitalize; font-weight:bold;">${review.confidence}</span>
-    </div>
-  `;
-
-  const qList = document.getElementById('questions-list');
-  if (qList) qList.innerHTML = review.questions_for_seller.map(q => `<div class="question-item"><input type="checkbox" /><span class="question-text">${q}</span></div>`).join('');
-}
-
-function toggleGaugeDetails() {
-  const details = document.getElementById('gauge-details');
-  const btn = event.target;
-  const isExpanded = btn.getAttribute('aria-expanded') === 'true';
-  btn.setAttribute('aria-expanded', !isExpanded);
-  details.style.display = isExpanded ? 'none' : 'block';
-}
-
-function switchTab(tabName) {
-  document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
-  document.querySelectorAll('.tab-button').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
-  const tab = document.getElementById(tabName + '-tab') || document.getElementById(tabName);
-  if (tab) tab.style.display = 'block';
-  event.target.classList.add('active');
-  event.target.setAttribute('aria-selected', 'true');
-}
-
-// ========== NEW STUDIO LOGIC (Upload, Modify, Try-On) ==========
-
-// 1. Person Upload
-document.addEventListener('change', (e) => {
-  if (e.target.id === 'person-upload') {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      STATE.studio.personBase64 = ev.target.result;
-      const preview = document.getElementById('person-preview');
-      if (preview) preview.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  }
-  
-  // 2. Garment Upload
-  if (e.target.id === 'garment-upload') {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      STATE.studio.garmentBase64 = ev.target.result;
-      STATE.studio.modifiedGarmentUrl = null; // Reset modification
-      const preview = document.getElementById('garment-preview');
-      if (preview) preview.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  }
-});
-
-// 3. Run Modification (Image-to-Image)
 async function runModification() {
-  const prompt = document.getElementById('modify-prompt')?.value;
+  const prompt = document.getElementById('modify-prompt').value.trim();
   const status = document.getElementById('modify-status');
-  if (!prompt) { if(status) status.textContent = 'Enter a prompt first.'; return; }
-  if (!STATE.studio.garmentBase64) { if(status) status.textContent = 'Upload a garment first.'; return; }
-
-  if(status) status.textContent = 'Modifying garment with AI... (takes ~30s)';
+  if (!prompt) { status.textContent = 'Describe a modification first.'; return; }
+  const base64 = await currentGarmentBase64();
+  if (!base64) { status.textContent = 'Pick or upload a garment first.'; return; }
+  status.textContent = 'Modifying garment...';
   try {
     const res = await fetch('/api/modify-image', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_base64: STATE.studio.garmentBase64, prompt })
+      body: JSON.stringify({ image_base64: base64, prompt }),
     });
     const data = await res.json();
     if (data.url) {
-      STATE.studio.modifiedGarmentUrl = data.url;
-      const preview = document.getElementById('garment-preview');
-      if (preview) preview.src = data.url;
-      if(status) status.textContent = 'Garment modified successfully!';
+      STATE.garment.modifiedUrl = data.url;
+      const prev = document.getElementById('garment-preview');
+      prev.hidden = false;
+      document.getElementById('garment-preview-img').src = data.url;
+      document.getElementById('garment-preview-label').textContent = 'Modified: ' + prompt;
+      status.textContent = 'Garment modified. Ready for try-on.';
     } else {
-      if(status) status.textContent = 'Error: ' + (data.error || 'Unknown');
+      status.textContent = 'Modification failed: ' + (data.error || 'unknown error');
     }
   } catch (e) {
-    if(status) status.textContent = 'Error: ' + e.message;
+    status.textContent = 'Modification failed: ' + e.message;
   }
 }
 
-// 4. Run Try-On
+/* ---------- studio: try-on ---------- */
+function resetStage() {
+  ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = true; });
+  document.getElementById('gauge-card').hidden = true;
+  document.getElementById('studio-status').textContent = '';
+}
+
+function setCmp(v) { document.getElementById('stage').style.setProperty('--pos', v + '%'); }
+
 async function runTryOn() {
-  const status = document.getElementById('vto-status');
-  const resultImg = document.getElementById('result-preview');
-  const placeholder = document.getElementById('result-placeholder');
-
-  if (!STATE.studio.personBase64) { if(status) status.textContent = 'Upload a selfie first.'; return; }
-  
-  const payload = { person_base64: STATE.studio.personBase64 };
-  if (STATE.studio.modifiedGarmentUrl) {
-    payload.garment_url = STATE.studio.modifiedGarmentUrl;
-  } else if (STATE.studio.garmentBase64) {
-    payload.garment_base64 = STATE.studio.garmentBase64;
-  } else {
-    if(status) status.textContent = 'Upload a garment first.'; return;
+  const status = document.getElementById('studio-status');
+  if (STATE.photo.custom && !document.getElementById('consent').checked) {
+    status.textContent = 'Tick the consent box to use your own photo.'; return;
   }
+  if (!STATE.garmentId && !STATE.garment.custom) { status.textContent = 'Pick or upload a garment first.'; return; }
 
-  if(status) status.textContent = 'Generating try-on... (takes ~1-2 mins)';
-  if(placeholder) placeholder.hidden = true;
-  if(resultImg) resultImg.hidden = true;
+  status.textContent = 'Contacting YouCam...';
+  const personBase64 = STATE.photo.base64 || await toBase64(STATE.photo.src);
+  const payload = { person_base64: personBase64 };
+  if (STATE.garment.modifiedUrl) payload.garment_url = STATE.garment.modifiedUrl;
+  else payload.garment_base64 = await currentGarmentBase64();
 
   try {
-    const res = await fetch('/api/try-on', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    const res = await fetch('/api/try-on', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
     if (data.url) {
-      if(resultImg) { resultImg.src = data.url; resultImg.hidden = false; }
-      if(status) status.textContent = 'Success!';
+      document.getElementById('stage-after').src = data.url;
+      ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = false; });
+      setCmp(50);
+      status.textContent = data.status === 'cached' ? 'Cached render ready. Drag to compare.' : 'Real render ready. Drag to compare.';
     } else {
-      if(status) status.textContent = 'Error: ' + (data.error || 'Unknown');
-      if(placeholder) placeholder.hidden = false;
+      status.textContent = 'Try-on failed: ' + (data.error || 'unknown error');
     }
   } catch (e) {
-    if(status) status.textContent = 'Error: ' + e.message;
-    if(placeholder) placeholder.hidden = false;
+    status.textContent = 'Try-on failed: ' + e.message;
   }
+  await evaluate();
 }
 
-function uploadPhoto() { alert('Use the Studio page to upload photos and generate try-ons.'); }
-function sortProducts() { /* implement if needed */ }
+/* ---------- fit notes (neutral, no verdicts) ---------- */
+async function evaluate() {
+  const g = catalog().find(p => p.id === STATE.garmentId) || STATE.current;
+  if (!g) return;
+  let insight = null;
+  try {
+    const res = await fetch('/api/evaluate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_profile: STATE.profile || { posture: 'seated', dexterity: 'limited', sensory: [], mobility_aids: [], fit_concerns: [] }, garment_id: g.id }),
+    });
+    if (res.ok) { const data = await res.json(); insight = data.insight || data; }
+  } catch {}
+  if (!insight) insight = { compatibility: [], risks: [], questions_for_seller: [], summary: '' };
+
+  // Fold free-text notes into seller questions
+  const notes = [STATE.profile?.dex_notes, STATE.profile?.aid_other].filter(Boolean).join('; ');
+  if (notes) insight.questions_for_seller = [...(insight.questions_for_seller || []), 'Can this garment accommodate: ' + notes + '?'];
+
+  STATE.insight = insight;
+  renderNotes(insight, g);
+}
+
+function fillList(id, items) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const title = el.querySelector('h4');
+  el.innerHTML = (title ? title.outerHTML : '') +
+    (items && items.length ? items.map(t => `<li><span>${t}</span></li>`).join('') : '<li><span>Nothing flagged.</span></li>');
+}
+
+function renderNotes(ins, g) {
+  const card = document.getElementById('gauge-card');
+  card.hidden = false;
+  const name = document.getElementById('gauge-garment-name');
+  if (name) name.textContent = g ? g.name : '';
+  fillList('gauge-ok', ins.compatibility);
+  fillList('gauge-warn', ins.risks);
+  fillList('gauge-ask', ins.questions_for_seller);
+}
+
+function speakSummary() {
+  if (!STATE.insight) return;
+  if (speechSynthesis.speaking) { speechSynthesis.cancel(); return; }
+  const parts = [
+    ...(STATE.insight.compatibility || []),
+    ...(STATE.insight.risks || []),
+  ];
+  speechSynthesis.speak(new SpeechSynthesisUtterance(parts.join('. ') || 'No fit notes yet.'));
+}
+
+/* ---------- shop ---------- */
+function renderProducts(containerId = 'products', list = null) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let items = list || [...catalog()];
+  if (!list && STATE.filters.size) {
+    items = items.filter(g => [...STATE.filters].every(f => (g.closure_type || '').includes(f) || (g.tags || []).includes(f)));
+  }
+  const sort = document.getElementById('sort-select')?.value;
+  if (sort === 'price-low') items.sort((a, b) => priceOf(a) - priceOf(b));
+  if (sort === 'price-high') items.sort((a, b) => priceOf(b) - priceOf(a));
+  container.innerHTML = items.map(g => `
+    <article class="p-card" onclick="showProduct('${g.id}')">
+      <div class="p-media">
+        <img src="/${g.image_path}" alt="${g.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'" />
+        <span class="flag">${g.closure_type}</span>
+        <button class="quick" onclick="event.stopPropagation(); showProduct('${g.id}')">View garment</button>
+      </div>
+      <div class="p-body">
+        <h3>${g.name}</h3>
+        <p class="meta">${g.fabric || ''} · ${g.stretch} stretch</p>
+        <div class="row"><span class="price">$${priceOf(g)}</span></div>
+      </div>
+    </article>`).join('') || '<p style="color:var(--ink-2)">No garments match these filters.</p>';
+}
+
+function toggleFilter(btn) {
+  const f = btn.dataset.filter;
+  STATE.filters.has(f) ? STATE.filters.delete(f) : STATE.filters.add(f);
+  btn.classList.toggle('active');
+  renderProducts();
+}
+
+function sortProducts() { renderProducts(); }
+
+/* ---------- product detail ---------- */
+function showProduct(id) {
+  const g = catalog().find(p => p.id === id);
+  if (!g) return;
+  STATE.current = g;
+  document.getElementById('breadcrumb-text').textContent = g.name;
+  document.getElementById('product-name').textContent = g.name;
+  document.getElementById('product-price').textContent = '$' + priceOf(g);
+  document.getElementById('product-description').textContent = g.description || '';
+  document.getElementById('detail-img').src = '/' + g.image_path;
+  const set = (sid, v) => { const el = document.getElementById(sid); if (el) el.textContent = v || '—'; };
+  set('spec-closure', g.closure_type); set('spec-back-rise', g.back_rise);
+  set('spec-stretch', g.stretch); set('spec-seams', g.seams); set('spec-pockets', g.pocket_access);
+  evaluate().then(() => {
+    // mirror studio notes into detail gauge
+    if (STATE.insight) {
+      fillList('d-ok', STATE.insight.compatibility);
+      fillList('d-warn', STATE.insight.risks);
+      fillList('d-ask', STATE.insight.questions_for_seller);
+      const q = document.getElementById('questions-list');
+      if (q) q.innerHTML = (STATE.insight.questions_for_seller || []).map(t => `<label class="q-item"><input type="checkbox" /><span>${t}</span></label>`).join('');
+    }
+  });
+  navigateTo('product');
+}
+
+function tryOnThis() {
+  if (STATE.current) {
+    STATE.garmentId = STATE.current.id;
+    renderGarmentList();
+  }
+  navigateTo('home');
+  setTimeout(() => document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' }), 60);
+}
+
+function toggleGaugeDetails(e) {
+  const body = document.getElementById('gauge-details');
+  if (!body) return;
+  const open = body.hidden;
+  body.hidden = !open;
+  e.currentTarget.setAttribute('aria-expanded', String(open));
+}
+
+function switchTab(name, e) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+  document.getElementById(name)?.classList.add('active');
+  e.currentTarget.classList.add('active');
+  e.currentTarget.setAttribute('aria-selected', 'true');
+}

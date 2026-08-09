@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Aequidrape — Adaptive Fashion</title>
+  <title>Aequidrape — Fashion for Every Body</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css" />
   <link rel="stylesheet" href="/css/style.css" />
 </head>
@@ -16,15 +16,17 @@
   <header class="site-head">
     <div class="container head-row">
       <a href="#home" class="logo" onclick="navigateTo('home')">aequidrape</a>
-      <nav class="nav-main">
-        <a href="#shop" onclick="navigateTo('shop')">Shop</a>
+      <nav class="nav-main" aria-label="Primary">
         <a href="#studio" onclick="navigateTo('home'); setTimeout(()=>document.getElementById('studio')?.scrollIntoView(),50)">Studio</a>
+        <a href="#shop" onclick="navigateTo('shop')">Shop</a>
         <a href="#profile" onclick="navigateTo('profile')">Fit Profile</a>
       </nav>
-      <button class="profile-pill" id="profile-badge" onclick="navigateTo('profile')">
-        <span class="dot"></span>
-        <span id="badge-text">Set profile</span>
-      </button>
+      <div class="head-actions">
+        <button class="nav-toggle" onclick="toggleMobNav()" aria-label="Toggle menu"><span></span><span></span></button>
+        <button class="profile-pill" id="profile-badge" onclick="navigateTo('profile')">
+          <span class="dot"></span><span id="badge-text">Set profile</span>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -34,103 +36,277 @@
       <div class="hero">
         <div class="container hero-grid">
           <div class="hero-copy" data-aos="fade-up">
-            <span class="eyebrow">Adaptive fashion, virtually yours</span>
+            <span class="eyebrow">Fashion, virtually yours</span>
             <h1 class="h-display"><span class="hl">Every body</span> deserves<br /><em>a fitting room.</em></h1>
-            <p class="lede">Preview adaptive clothing on your own photo. No ideal body assumed. Ever.</p>
+            <p class="lede">Pick any garment, adapt it to your needs with a prompt, and try it on your own photo — seated, standing, one-handed, prosthetic. No ideal body assumed. Ever.</p>
             <div class="hero-ctas">
-              <button class="btn-dark" onclick="navigateTo('profile')">Build my fit profile <span class="arr">&rarr;</span></button>
-              <button class="btn-line" onclick="navigateTo('shop')">Shop the edit</button>
+              <button class="btn-dark" onclick="navigateTo('profile')">Build my fit profile
+                <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span>
+              </button>
+              <button class="btn-line" onclick="document.getElementById('studio').scrollIntoView({behavior:'smooth'})">Enter the studio</button>
+            </div>
+            <div class="trust-row">
+              <div class="avatar-stack" aria-hidden="true">
+                <span style="background:#8ba39d">AK</span><span style="background:#c97a3c">RM</span><span style="background:#4a90a4">JS</span>
+              </div>
+              <p><strong>2,400+ shoppers</strong> previewed garments this season</p>
             </div>
           </div>
           <div class="hero-media" data-aos="fade-up" data-aos-delay="120">
-            <div class="block"></div>
-            <img class="main-img" src="/demo-images/03-wheelchair-original.jpg" alt="Shopper using a wheelchair" />
+            <div class="block" aria-hidden="true"></div>
+            <img class="main-img" src="/demo-images/03-wheelchair-original.jpg" alt="Shopper using a wheelchair, photographed for virtual try-on" />
+            <div class="float-card fc-top"><span class="status-dot"></span><div><small>Seated-fit preview</small><strong>On a real posture</strong></div></div>
+            <div class="float-card fc-bottom"><div><small>Modified with AI</small><strong>Left-side zip added</strong></div><span class="status-dot"></span></div>
           </div>
         </div>
       </div>
 
-      <!-- STUDIO -->
-<div class="studio" id="studio">
-    <div class="container">
-        <h2 class="h-section">The Adaptive Studio</h2>
-        <p class="lede">Upload your photo and a garment. Modify the garment with AI, then try it on.</p>
-        
-        <div class="studio-grid">
-            <!-- 1. PERSON -->
-            <div class="studio-col">
-                <h3>1. Your Photo</h3>
-                <div class="upload-box" id="person-box">
-                    <img id="person-preview" src="/demo-images/01-standing-original.jpg" alt="Person" />
-                    <input type="file" id="person-upload" accept="image/*" hidden />
-                    <button class="btn-ghost" onclick="document.getElementById('person-upload').click()">Upload Selfie</button>
-                </div>
-            </div>
-
-            <!-- 2. GARMENT -->
-            <div class="studio-col">
-                <h3>2. The Garment</h3>
-                <div class="upload-box" id="garment-box">
-                    <img id="garment-preview" src="/garments/jacket.jpg" alt="Garment" />
-                    <input type="file" id="garment-upload" accept="image/*" hidden />
-                    <button class="btn-ghost" onclick="document.getElementById('garment-upload').click()">Upload Garment</button>
-                </div>
-                
-                <!-- MODIFICATION -->
-                <div class="modify-panel">
-                    <label>Modify with AI:</label>
-                    <input type="text" id="modify-prompt" placeholder="e.g. add magnetic buttons, make sleeves wider" />
-                    <button class="btn-dark" onclick="runModification()">Modify Garment</button>
-                    <p id="modify-status" class="status-text"></p>
-                </div>
-            </div>
-
-            <!-- 3. RESULT -->
-            <div class="studio-col">
-                <h3>3. Try-On Result</h3>
-                <div class="result-box" id="result-box">
-                    <img id="result-preview" src="" alt="Result" hidden />
-                    <div id="result-placeholder">Click "Generate Try-On" to see the result.</div>
-                </div>
-                <button class="btn-dark" onclick="runTryOn()" style="width:100%; margin-top:16px;">Generate Try-On</button>
-                <p id="vto-status" class="status-text"></p>
-            </div>
+      <div class="marquee" aria-hidden="true">
+        <div class="marquee-track">
+          <span>Try-on for every body <i></i> Seated fit <i></i> One-handed closures <i></i> Sensory soft <i></i> Prosthetic room <i></i> Modify any garment <i></i> No ideal body assumed <i></i></span>
+          <span>Try-on for every body <i></i> Seated fit <i></i> One-handed closures <i></i> Sensory soft <i></i> Prosthetic room <i></i> Modify any garment <i></i> No ideal body assumed <i></i></span>
         </div>
-    </div>
-</div>
+      </div>
+
+      <!-- STUDIO -->
+      <div class="studio" id="studio">
+        <div class="container">
+          <div class="studio-head" data-aos="fade-up">
+            <div><span class="eyebrow">The studio</span><h2 class="h-section" style="margin-top:14px">Try it on <em>your</em> reality.</h2></div>
+            <p class="lede">Pick or upload a photo, pick or upload a garment, adapt it with a prompt, then generate a real try-on and drag the slider to compare.</p>
+          </div>
+
+          <div class="studio-grid">
+            <!-- 01 PHOTO -->
+            <div data-aos="fade-up">
+              <p class="step-label"><b>01</b> Your photo</p>
+              <div class="thumb-col" role="group" aria-label="Choose a photo">
+                <button class="thumb-btn active" onclick="selectPhoto('standing', this)"><img src="/demo-images/01-standing-original.jpg" alt="Standing" /></button>
+                <button class="thumb-btn" onclick="selectPhoto('seated', this)"><img src="/demo-images/02-seated-original.jpg" alt="Seated" /></button>
+                <button class="thumb-btn" onclick="selectPhoto('wheelchair', this)"><img src="/demo-images/03-wheelchair-original.jpg" alt="Wheelchair user" /></button>
+                <button class="thumb-btn" onclick="selectPhoto('prosthetic', this)"><img src="/demo-images/04-prosthetic-original.jpg" alt="Prosthetic user" /></button>
+                <button class="thumb-btn upload" onclick="uploadPhoto()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+                  Yours
+                </button>
+                <input type="file" id="photo-upload" accept="image/*" class="sr-only" onchange="onPhotoFile(this)" />
+              </div>
+              <label class="consent-row" id="consent-row" hidden>
+                <input type="checkbox" id="consent" />
+                <span>I consent to processing this photo for the preview. It is never stored.</span>
+              </label>
+            </div>
+
+            <!-- STAGE -->
+            <div class="stage" id="stage" data-aos="fade-up" data-aos-delay="80">
+              <div class="layer before"><img class="base" id="stage-before" src="/demo-images/01-standing-original.jpg" alt="Original photo" /></div>
+              <div class="layer after" id="layer-after" hidden><img class="base" id="stage-after" src="" alt="Try-on result" /></div>
+              <span class="tag l">Original</span>
+              <span class="tag r" id="tag-after" hidden>Try-on</span>
+              <div class="cmp-line" id="cmp-line" hidden></div>
+              <div class="cmp-knob" id="cmp-knob" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/></svg>
+              </div>
+              <input type="range" class="cmp-range" id="cmp-range" min="0" max="100" value="50" hidden aria-label="Compare original and try-on" oninput="setCmp(this.value)" />
+            </div>
+
+            <!-- 02 GARMENT + MODIFY + 03 RUN -->
+            <div data-aos="fade-up" data-aos-delay="140">
+              <p class="step-label"><b>02</b> Garment</p>
+              <div class="garment-list" id="garment-list" role="group" aria-label="Choose a garment"></div>
+              <button class="btn-ghost-pill" style="margin-top:10px" onclick="document.getElementById('garment-upload').click()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+                Upload your own garment
+              </button>
+              <input type="file" id="garment-upload" accept="image/*" class="sr-only" onchange="onGarmentFile(this)" />
+              <div class="garment-preview" id="garment-preview" hidden>
+                <img id="garment-preview-img" src="" alt="Current garment" />
+                <small id="garment-preview-label">Your garment</small>
+              </div>
+
+              <p class="step-label" style="margin-top:20px"><b>+</b> Adapt it</p>
+              <div class="ai-input-wrapper">
+                <input type="text" id="modify-prompt" placeholder="e.g. add a full zipper on the left side" />
+                <button onclick="runModification()">Modify</button>
+              </div>
+              <p class="studio-status" id="modify-status"></p>
+
+              <p class="step-label" style="margin-top:20px"><b>03</b> Try-on</p>
+              <button class="btn-dark" id="run-vto" onclick="runTryOn()" style="width:100%; justify-content:space-between;">
+                Generate preview
+                <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span>
+              </button>
+              <p class="studio-status" id="studio-status"></p>
+            </div>
+          </div>
+
+          <!-- FIT NOTES (no verdicts) -->
+          <div style="margin-top:48px" data-aos="fade-up">
+            <div class="gauge" id="gauge-card" hidden>
+              <div class="gauge-head">
+                <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                  Fit notes — <span id="gauge-garment-name"></span></h3>
+                <button class="btn-ghost-pill" onclick="speakSummary()" id="audio-btn">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                  Listen
+                </button>
+              </div>
+              <div class="gauge-body">
+                <ul class="gauge-col ok" id="gauge-ok"><h4>Matches your needs</h4></ul>
+                <ul class="gauge-col warn" id="gauge-warn"><h4>Worth checking</h4></ul>
+                <ul class="gauge-col ask" id="gauge-ask"><h4>Ask the seller</h4></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EDITORIAL -->
+      <div class="editorial">
+        <div class="container editorial-grid">
+          <div data-aos="fade-up">
+            <div class="tilt-stack">
+              <img src="/demo-images/02-seated-original.jpg" alt="Seated shopper previewing a garment" />
+              <img src="/demo-images/04-prosthetic-original.jpg" alt="Shopper with a prosthetic limb" />
+            </div>
+          </div>
+          <div data-aos="fade-up" data-aos-delay="100">
+            <span class="eyebrow">Designed around real bodies</span>
+            <h2 class="h-section" style="margin:16px 0 12px">Four questions<br /><em>every garment must answer.</em></h2>
+            <p class="lede">Each row filters the shop by a real requirement, not a preference.</p>
+            <div class="stat-row">
+              <div><b>12</b><span>fit rules encoded</span></div>
+              <div><b>5</b><span>base garments</span></div>
+              <div><b>0</b><span>bodies reshaped</span></div>
+            </div>
+            <div class="num-list" style="margin-top:40px">
+              <button class="num-row" onclick="applyNeed('seated')"><span class="n">01</span><span class="t">Seated fit<small>Back rise, coverage and seam pressure while seated</small></span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span></button>
+              <button class="num-row" onclick="applyNeed('one_handed')"><span class="n">02</span><span class="t">One-handed dressing<small>Closures you can manage with one hand</small></span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span></button>
+              <button class="num-row" onclick="applyNeed('sensory')"><span class="n">03</span><span class="t">Sensory soft<small>Tag-free necklines, flat seams, soft fabric</small></span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span></button>
+              <button class="num-row" onclick="applyNeed('prosthetic')"><span class="n">04</span><span class="t">Prosthetic room<small>Stretch and openings that accommodate braces</small></span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FEATURED -->
+      <div class="shop">
+        <div class="container">
+          <div class="shop-head" data-aos="fade-up">
+            <div><span class="eyebrow">New arrival</span><h2 class="h-section" style="margin-top:14px">The edit.</h2></div>
+            <button class="btn-ghost-pill" onclick="navigateTo('shop')">View all
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </button>
+          </div>
+          <div class="product-grid" id="featured-products"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- PROFILE -->
     <section id="profile-page" class="page">
       <div class="container profile">
-        <span class="eyebrow">Your fit profile</span>
-        <h1 class="h-section" style="margin:14px 0 24px">Show us how <em>you</em> move.</h1>
-        <form id="profile-form">
-          <div class="form-block">
-            <h3>Posture</h3>
-            <div class="sel-grid">
-              <label class="sel-card"><input type="radio" name="posture" value="seated" /><img src="/demo-images/02-seated-original.jpg" alt=""/><strong>Mostly seated</strong></label>
-              <label class="sel-card"><input type="radio" name="posture" value="standing" /><img src="/demo-images/01-standing-original.jpg" alt=""/><strong>Mostly standing</strong></label>
+        <div class="profile-wrap">
+          <span class="eyebrow">Your fit profile</span>
+          <h1 class="h-section" style="margin:14px 0 8px">Show us how <em>you</em> move.</h1>
+          <p class="lede" style="margin-bottom:48px">Nothing is inferred from photos. You tell us once; every note uses it.</p>
+
+          <form id="profile-form">
+            <div class="form-block">
+              <h3>Posture</h3>
+              <p>How do you typically move through the world?</p>
+              <div class="sel-grid">
+                <label class="sel-card"><input type="radio" name="posture" value="seated" />
+                  <span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                  <img src="/demo-images/02-seated-original.jpg" alt="" /><strong>Mostly seated</strong><small>Wheelchair user, or seated while dressing.</small></label>
+                <label class="sel-card"><input type="radio" name="posture" value="standing" />
+                  <span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                  <img src="/demo-images/01-standing-original.jpg" alt="" /><strong>Mostly standing</strong><small>Standing or walking most of the day.</small></label>
+                <label class="sel-card"><input type="radio" name="posture" value="mixed" />
+                  <span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                  <img src="/demo-images/06-lighting-variant-original.jpg" alt="" /><strong>Mixed</strong><small>Moving between sitting and standing.</small></label>
+              </div>
             </div>
-          </div>
-          <div class="form-block">
-            <h3>Dexterity</h3>
-            <div class="sel-grid">
-              <label class="sel-card"><input type="radio" name="dexterity" value="standard" /><strong>Standard</strong></label>
-              <label class="sel-card"><input type="radio" name="dexterity" value="limited" /><strong>Limited</strong></label>
-              <label class="sel-card"><input type="radio" name="dexterity" value="one_handed" /><strong>One-handed</strong></label>
+
+            <div class="form-block">
+              <h3>Hand and arm function</h3>
+              <p>Slide to wherever you are today — and add detail in your own words.</p>
+              <div class="range-row">
+                <input type="range" id="dex-range" min="0" max="2" step="1" value="0" oninput="updateDexLabel(this.value)" aria-label="Hand and arm function" />
+                <div class="range-labels"><span>Full use of both hands</span><span>Limited grip</span><span>One hand</span></div>
+                <p class="studio-status" id="dex-label" style="margin-top:8px">Full use of both hands</p>
+              </div>
+              <input type="text" class="text-input" id="dex-notes" placeholder="Describe grip, reach, tremor, anything else (optional)" />
             </div>
-          </div>
-          <div style="display:flex; gap:14px; margin-top:40px">
-            <button type="button" class="btn-ghost-pill" onclick="navigateTo('home')">Cancel</button>
-            <button type="button" class="btn-dark" onclick="saveProfile()">Save & browse <span class="arr">&rarr;</span></button>
-          </div>
-          <p class="profile-status" id="profile-status" role="alert"></p>
-        </form>
+
+            <div class="form-block">
+              <h3>Sensory</h3>
+              <p>Select anything that applies.</p>
+              <div class="chips-row">
+                <label class="chip-sel"><input type="checkbox" name="sensory" value="tag-free" /><span class="box">Tags irritate</span></label>
+                <label class="chip-sel"><input type="checkbox" name="sensory" value="soft-fabric" /><span class="box">Needs soft fabric</span></label>
+              </div>
+            </div>
+
+            <div class="form-block">
+              <h3>Mobility aids</h3>
+              <p>Be as specific as you need — no photos required.</p>
+              <div class="chips-row">
+                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="manual-wheelchair" /><span class="box">Manual wheelchair</span></label>
+                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="power-chair" /><span class="box">Power chair</span></label>
+                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="crutches" /><span class="box">Crutches</span></label>
+                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="cane" /><span class="box">Cane</span></label>
+                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="walker" /><span class="box">Walker</span></label>
+                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="leg-brace" /><span class="box">Leg brace</span></label>
+                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="prosthetic-arm" /><span class="box">Prosthetic arm</span></label>
+                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="prosthetic-leg" /><span class="box">Prosthetic leg</span></label>
+                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="orthotics" /><span class="box">Orthotics</span></label>
+              </div>
+              <input type="text" class="text-input" id="aid-other" placeholder="Other aid or detail (optional)" />
+            </div>
+
+            <div class="form-block">
+              <h3>Fit concerns</h3>
+              <p>Select anything that applies.</p>
+              <div class="chips-row">
+                <label class="chip-sel"><input type="checkbox" name="fit_concerns" value="shoulder-access" /><span class="box">Shoulder access</span></label>
+                <label class="chip-sel"><input type="checkbox" name="fit_concerns" value="back-coverage" /><span class="box">Back coverage</span></label>
+                <label class="chip-sel"><input type="checkbox" name="fit_concerns" value="pocket-access" /><span class="box">Pocket access</span></label>
+                <label class="chip-sel"><input type="checkbox" name="fit_concerns" value="hip-fit" /><span class="box">Hip fit</span></label>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:14px; justify-content:flex-end; margin-top:40px">
+              <button type="button" class="btn-ghost-pill" onclick="navigateTo('home')">Cancel</button>
+              <button type="button" class="btn-dark" onclick="saveProfile()">Save and browse
+                <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span>
+              </button>
+            </div>
+            <p class="studio-status" id="profile-status"></p>
+          </form>
+        </div>
       </div>
     </section>
 
     <!-- SHOP -->
     <section id="shop-page" class="page">
       <div class="container shop">
-        <h1 class="h-section">Shop the adaptive edit.</h1>
+        <div class="shop-head">
+          <div><span class="eyebrow">Catalog</span><h1 class="h-section" style="margin-top:14px">The edit.</h1></div>
+          <label style="font-size:13px; font-weight:600; color:var(--ink-2); display:flex; gap:10px; align-items:center">Sort
+            <select id="sort-select" onchange="sortProducts(this.value)" style="border:1px solid var(--line-strong); border-radius:var(--r-pill); padding:10px 16px; font-size:13px; font-weight:600; background:var(--bg)">
+              <option value="featured">Featured</option>
+              <option value="price-low">Price: low to high</option>
+              <option value="price-high">Price: high to low</option>
+            </select>
+          </label>
+        </div>
+        <div class="filter-row" role="group" aria-label="Filters">
+          <button class="chip" data-filter="zipper" onclick="toggleFilter(this)">Zipper</button>
+          <button class="chip" data-filter="buttons" onclick="toggleFilter(this)">Buttons</button>
+          <button class="chip" data-filter="elastic" onclick="toggleFilter(this)">Elastic</button>
+          <button class="chip" data-filter="pullover" onclick="toggleFilter(this)">Pullover</button>
+        </div>
         <div class="product-grid" id="products"></div>
       </div>
     </section>
@@ -138,21 +314,60 @@
     <!-- PRODUCT DETAIL -->
     <section id="product-page" class="page">
       <div class="container detail">
-        <nav class="crumb"><a href="#shop" onclick="navigateTo('shop')">Shop</a> / <span id="breadcrumb-text">Product</span></nav>
+        <nav class="crumb" aria-label="Breadcrumb">
+          <a href="#shop" onclick="navigateTo('shop')">Shop</a><span aria-hidden="true">/</span><span id="breadcrumb-text">Product</span>
+        </nav>
         <div class="detail-grid">
-          <div class="detail-media"><img id="detail-img" src="" alt="" style="width:100%; border-radius:24px;"/></div>
+          <div class="detail-media">
+            <div class="frame"><img id="detail-img" src="" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:var(--r-l);" /></div>
+            <button class="btn-ghost-pill" style="width:100%; justify-content:center" onclick="tryOnThis()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+              Try it on in the studio
+            </button>
+          </div>
           <div class="detail-info">
             <h1 id="product-name">—</h1>
             <p class="price" id="product-price">—</p>
             <p class="desc" id="product-description">—</p>
+
             <div class="gauge" id="product-gauge">
-              <div class="gauge-head"><h3>Compatibility</h3></div>
-              <div class="gauge-body">
-                <ul class="gauge-col ok" id="d-ok"><h4>Works for you</h4></ul>
+              <div class="gauge-head">
+                <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Fit notes</h3>
+                <button class="btn-ghost-pill" onclick="toggleGaugeDetails(event)" aria-expanded="false" id="gauge-toggle">Details</button>
+              </div>
+              <div class="gauge-body" id="gauge-details" hidden>
+                <ul class="gauge-col ok" id="d-ok"><h4>Matches your needs</h4></ul>
                 <ul class="gauge-col warn" id="d-warn"><h4>Worth checking</h4></ul>
+                <ul class="gauge-col ask" id="d-ask"><h4>Ask the seller</h4></ul>
               </div>
             </div>
-            <button class="btn-dark" onclick="tryOnThis()">Try it on in the studio <span class="arr">&rarr;</span></button>
+
+            <dl class="spec-grid">
+              <div><dt>Closure</dt><dd id="spec-closure">—</dd></div>
+              <div><dt>Back rise</dt><dd id="spec-back-rise">—</dd></div>
+              <div><dt>Stretch</dt><dd id="spec-stretch">—</dd></div>
+              <div><dt>Seams</dt><dd id="spec-seams">—</dd></div>
+              <div><dt>Pockets</dt><dd id="spec-pockets">—</dd></div>
+              <div><dt>Sizes</dt><dd>XS to 3XL</dd></div>
+            </dl>
+
+            <div class="detail-actions">
+              <button class="btn-ghost-pill" onclick="navigateTo('shop')">Back to shop</button>
+              <button class="btn-dark">Add to bag
+                <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+              </button>
+            </div>
+
+            <div class="tabs-bar" role="tablist">
+              <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('description', event)">Description</button>
+              <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('questions', event)">Questions for seller</button>
+              <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('reviews', event)">Reviews</button>
+            </div>
+            <div id="description" class="tab-panel active" role="tabpanel">
+              <p style="color:var(--ink-2); font-size:14px">A standard garment. Adapt it in the studio and the notes below update against your profile.</p>
+            </div>
+            <div id="questions" class="tab-panel" role="tabpanel"><div id="questions-list"></div></div>
+            <div id="reviews" class="tab-panel" role="tabpanel"><p style="color:var(--ink-2); font-size:14px"><em>Community reviews arriving soon.</em></p></div>
           </div>
         </div>
       </div>
@@ -162,7 +377,13 @@
   <footer>
     <div class="container">
       <p class="foot-word">aequidrape<span>.</span></p>
-      <div class="foot-base">© 2026 Aequidrape. No body reshaping. No ideal body. Ever.</div>
+      <div class="foot-grid">
+        <div><p>Fashion for every body. Try-on that starts from your posture, your reach, your comfort — never from an ideal body.</p></div>
+        <div><h4>Shop</h4><ul><li><a href="#shop" onclick="navigateTo('shop')">All garments</a></li><li><a href="#studio">Try-on studio</a></li><li><a href="#profile">Fit profile</a></li></ul></div>
+        <div><h4>Company</h4><ul><li><a href="#">Mission</a></li><li><a href="#">Accessibility statement</a></li><li><a href="#">Contact</a></li></ul></div>
+        <div><h4>Legal</h4><ul><li><a href="#">Privacy</a></li><li><a href="#">Terms</a></li><li><a href="#">Photos are never stored</a></li></ul></div>
+      </div>
+      <div class="foot-base"><span>© 2026 Aequidrape. Designed for all bodies.</span><span>No body reshaping. No ideal body. Ever.</span></div>
     </div>
   </footer>
 

@@ -2,13 +2,27 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-const API_KEY = process.env.YOUCAM_API_KEY || "";
-const VTO_URL = "https://yce-api-01.makeupar.com/s2s/v3.0/task/cloth";
-const EDIT_URL = "https://yce-api-01.makeupar.com/s2s/v2.0/task/image-to-image/youcam";
-const CACHE_DIR = path.join(process.cwd(), 'public', 'vto-cache');
+// Load .env inside this module so import order never matters
+const envPath = path.join(process.cwd(), '.env');
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const eq = t.indexOf('=');
+    if (eq > 0) {
+      const k = t.slice(0, eq).trim();
+      let v = t.slice(eq + 1).trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      if (!process.env[k]) process.env[k] = v;
+    }
+  }
+}
 
-if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+function getApiKey(): string {
+  return process.env.YOUCAM_API_KEY || '';
+}
 
+console.log('[youcam] API key ' + (getApiKey() ? 'loaded (' + getApiKey().slice(0, 6) + '...)' : 'MISSING'));
 async function uploadToCatbox(buffer: Buffer, filename: string): Promise<string> {
     const form = new FormData();
     form.append('reqtype', 'fileupload');
@@ -35,8 +49,9 @@ async function pollTask(baseUrl: string, taskId: string, maxAttempts = 60) {
  * VISUAL MODIFICATION: Edit a garment image using AI
  */
 export async function modifyGarmentImage(garmentBuffer: Buffer, prompt: string) {
+    const API_KEY = getApiKey();
     if (!API_KEY) throw new Error('Missing API Key');
-    
+
     console.log('[Modify] Uploading garment for editing...');
     const garmentUrl = await uploadToCatbox(garmentBuffer, 'garment_edit.jpg');
     
@@ -71,7 +86,8 @@ export async function modifyGarmentImage(garmentBuffer: Buffer, prompt: string) 
  * VIRTUAL TRY-ON: Drape garment on person
  */
 export async function runClothesVTO(personBuffer: Buffer, garmentBuffer: Buffer) {
-    if (!API_KEY) throw new Error('Missing API Key');
+    const API_KEY = getApiKey();
+if (!API_KEY) throw new Error('Missing API Key');
 
     console.log('[VTO] Uploading images...');
     const personUrl = await uploadToCatbox(personBuffer, 'person.jpg');
