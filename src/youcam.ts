@@ -2,105 +2,96 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-// Configuration
 const API_KEY = process.env.YOUCAM_API_KEY || "";
-const API_URL = "https://api.youcam.com/api/v1/clothes/virtual-try-on";
+const VTO_URL = "https://yce-api-01.makeupar.com/s2s/v3.0/task/cloth";
+const EDIT_URL = "https://yce-api-01.makeupar.com/s2s/v2.0/task/image-to-image/youcam";
 const CACHE_DIR = path.join(process.cwd(), 'public', 'vto-cache');
 
-// Ensure cache directory exists
-if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
+if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+
+async function uploadToCatbox(buffer: Buffer, filename: string): Promise<string> {
+    const form = new FormData();
+    form.append('reqtype', 'fileupload');
+    form.append('fileToUpload', new Blob([new Uint8Array(buffer)], { type: 'image/jpeg' }), filename);    const res = await fetch('https://catbox.moe/user/api.php', { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`Catbox upload failed: ${res.status}`);
+    return (await res.text()).trim();
 }
 
-export async function runClothesVTO(personImageBase64: string, garmentImagePath: string) {
-    // 1. Validation
-    if (!API_KEY) return { status: 'error', message: 'Missing YOUCAM_API_KEY in environment' };
-    if (!fs.existsSync(garmentImagePath)) return { status: 'error', message: `Garment image not found at ${garmentImagePath}` };
-
-    // 2. Read Images
-    const garmentBuffer = fs.readFileSync(garmentImagePath);
-    
-    // Strip data URI prefix if present (e.g., "data:image/jpeg;base64,")
-    const base64Data = personImageBase64.replace(/^data:image\/\w+;base64,/, '');
-    const personBuffer = Buffer.from(base64Data, 'base64');
-
-    // 3. Check Cache (Speed up demo & save API quota)
-    const hash = crypto.createHash('md5')
-        .update(garmentBuffer)
-        .update(personBuffer.slice(0, 2000)) // Hash first 2KB of person image for speed
-        .digest('hex');
+async function pollTask(baseUrl: string, taskId: string, maxAttempts = 60) {
+    for (let i = 1; i <= maxAttempts; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const res = await fetch(`${baseUrl}/${taskId}`, { headers: { 'Authorization': `Bearer ${API_KEY}` } });
+        const data = await res.json();
+        const status = data?.data?.task_status;
+        console.log(`[Poll ${i}/${maxAttempts}] Status: ${status}`); // VERBOSE LOGGING
         
-    const cacheFile = path.join(CACHE_DIR, `${hash}.json`);
-
-    if (fs.existsSync(cacheFile)) {
-        try {
-            const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
-            if (cached.url) return { status: 'cached', url: cached.url };
-        } catch (e) { /* Ignore bad cache file */ }
+        if (status === 'success') return data.data.results;
+        if (status === 'error' || status === 'failed') throw new Error(`Task failed: ${JSON.stringify(data)}`);
     }
+    throw new Error('Timeout waiting for result');
+}
 
-    // 4. Prepare Multipart Form Data
-    // We use global FormData and Blob (available in Node 18+).
-    // The 3rd argument to append() sets the filename, which some APIs require.
-    const form = new FormData();
+/**
+ * VISUAL MODIFICATION: Edit a garment image using AI
+ */
+export async function modifyGarmentImage(garmentBuffer: Buffer, prompt: string) {
+    if (!API_KEY) throw new Error('Missing API Key');
     
-    const personBlob = new Blob([personBuffer], { type: 'image/jpeg' });
-    form.append('image', personBlob, 'person.jpg');
+    console.log('[Modify] Uploading garment for editing...');
+    const garmentUrl = await uploadToCatbox(garmentBuffer, 'garment_edit.jpg');
+    
+    // Construct a prompt that preserves the garment but adds the feature
+    const fullPrompt = `A high-quality flat lay photo of a clothing item. ${prompt}. Professional studio lighting, clean background, high resolution.`;
 
-    const garmentBlob = new Blob([garmentBuffer], { type: 'image/jpeg' });
-    form.append('garment_image', garmentBlob, 'garment.jpg');
+    console.log('[Modify] Starting edit task...');
+    const startRes = await fetch(EDIT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+        body: JSON.stringify({
+            src_file_urls: [garmentUrl],
+            model: "youcam-image-v2",
+            prompt: fullPrompt,
+            size: "1024*1024" // Square is best for garments
+        })
+    });
 
-    // Optional: If the API strictly requires a garment_id string alongside the image, 
-    // you can add it here, but usually the image is enough for "try-on".
-    // form.append('garment_id', 'generic-id'); 
+    if (!startRes.ok) throw new Error(`Edit start failed: ${await startRes.text()}`);
+    const startData = await startRes.json();
+    const taskId = startData?.data?.task_id;
+    if (!taskId) throw new Error('No task ID for edit');
 
-    // 5. Call API
-    try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${API_KEY}`
-            },
-            body: form
-        });
+    const results = await pollTask(EDIT_URL, taskId);
+    const resultUrl = Array.isArray(results) ? results[0]?.url || results[0] : results?.url;
+    if (!resultUrl) throw new Error('No image returned from edit');
+    
+    return resultUrl;
+}
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            return { 
-                status: 'error', 
-                code: response.status, 
-                message: `API Error: ${errorText.slice(0, 200)}` 
-            };
-        }
+/**
+ * VIRTUAL TRY-ON: Drape garment on person
+ */
+export async function runClothesVTO(personBuffer: Buffer, garmentBuffer: Buffer) {
+    if (!API_KEY) throw new Error('Missing API Key');
 
-        const contentType = response.headers.get('content-type') || '';
-        let resultUrl = '';
+    console.log('[VTO] Uploading images...');
+    const personUrl = await uploadToCatbox(personBuffer, 'person.jpg');
+    const garmentUrl = await uploadToCatbox(garmentBuffer, 'garment.jpg');
 
-        if (contentType.includes('application/json')) {
-            const data = await response.json();
-            // Handle various response shapes
-            resultUrl = data.image || data.preview_url || data.result_image || data.url || '';
-            
-            // If API returns raw base64 string in JSON
-            if (resultUrl && !resultUrl.startsWith('http') && !resultUrl.startsWith('data:')) {
-                 resultUrl = `data:image/jpeg;base64,${resultUrl}`;
-            }
-        } else if (contentType.includes('image')) {
-            // Handle direct image response
-            const buffer = Buffer.from(await response.arrayBuffer());
-            resultUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
-        }
+    console.log('[VTO] Starting try-on task...');
+    const startRes = await fetch(VTO_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+        body: JSON.stringify({ src_file_url: personUrl, ref_file_url: garmentUrl, garment_category: 'auto' })
+    });
 
-        if (!resultUrl) {
-            return { status: 'error', message: 'Success (200) but no image URL found in response.' };
-        }
+    if (!startRes.ok) throw new Error(`VTO start failed: ${await startRes.text()}`);
+    const startData = await startRes.json();
+    const taskId = startData?.data?.task_id;
+    if (!taskId) throw new Error('No task ID for VTO');
 
-        // 6. Save to Cache
-        fs.writeFileSync(cacheFile, JSON.stringify({ url: resultUrl }));
-
-        return { status: 'success', url: resultUrl };
-
-    } catch (error: any) {
-        return { status: 'error', message: `Network Error: ${error.message}` };
-    }
+    const results = await pollTask(VTO_URL, taskId);
+    const resultUrl = Array.isArray(results) ? results[0]?.url || results[0] : results?.url;
+    if (!resultUrl) throw new Error('No image returned from VTO');
+    
+    return resultUrl;
 }

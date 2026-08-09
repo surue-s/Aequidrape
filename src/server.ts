@@ -1,112 +1,105 @@
-import express from "express";
-import path from "path";
-import { fileURLToPath } from "url";
-import { getAllGarments, getGarmentById, generateFullReview } from "./index.js";
-import type { UserProfile } from "./types.js";
-import { readFileSync, existsSync } from 'node:fs';
-import { runClothesVTO } from './youcam';
-import fs from 'fs';
+import express from 'express';
+import path from 'node:path';
+import fs from 'node:fs';
+import { runClothesVTO, modifyGarmentImage } from './youcam';
 
-// Load garments safely without Node import warnings
-const garmentsData = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), 'data/garments.json'), 'utf-8')
-);
-
-if (existsSync('.env')) for (const line of readFileSync('.env', 'utf8').split('\n')) {
-  const [k, ...v] = line.split('='); if (k && v.length) process.env[k.trim()] = v.join('=').trim();
+// ============================================================
+// 1. ENV & DATA LOADING
+// ============================================================
+const envPath = path.join(process.cwd(), '.env');
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq > 0) process.env[trimmed.slice(0, eq)] = trimmed.slice(eq + 1);
+  }
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const garmentsPath = path.join(process.cwd(), 'data', 'garments.json');
+let garments: any[] = [];
+try { garments = JSON.parse(fs.readFileSync(garmentsPath, 'utf8')); } 
+catch (e) { console.warn('[server] Could not load garments.json'); }
 
+// ============================================================
+// 2. EXPRESS SETUP
+// ============================================================
 const app = express();
-const port = Number(process.env.PORT || 3000);
+const PORT = parseInt(process.env.PORT || '3000', 10);
 
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '50mb' })); // Increased for base64 images
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(process.cwd(), 'public')));
-app.use("/demo-images", express.static(path.resolve(__dirname, "../public/demo-images")));
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, name: "Aequidrape", mode: "simulation" });
+// ============================================================
+// 3. ROUTES
+// ============================================================
+app.get('/api/health', (_req, res) => res.json({ status: 'ok', garments: garments.length }));
+app.get('/api/products', (_req, res) => res.json(garments));
+app.get('/api/garments', (_req, res) => res.json({ garments }));
+
+app.post('/api/evaluate', (req, res) => {
+  const profile = req.body.user_profile || req.body.profile;
+  const garmentId = req.body.garment_id || req.body.garmentId;
+  const garment = garments.find((g) => g.id === garmentId);
+  if (!profile || !garment) return res.status(400).json({ error: 'Missing profile or garment' });
+
+  // Inline fallback rules engine
+  const ok: string[] = [], warn: string[] = [], ask: string[] = [];
+  if ((profile.dexterity === 'limited' || profile.dexterity === 'one_handed') && /magnetic|hook|zipper/.test(garment.closure_type || '')) ok.push(`${garment.closure_type} closure supports easier dressing.`);
+  if (profile.posture === 'seated' && garment.back_rise === 'high') ok.push('High back rise supports seated coverage.');
+  if (profile.posture === 'seated' && garment.back_rise !== 'high') warn.push('Back rise may sit low while seated.');
+  ask.push('What is the seated back length in centimetres?');
+  
+  const confidence = warn.length === 0 && ok.length >= 2 ? 'high' : warn.length > ok.length ? 'low' : 'moderate';
+  res.json({ garment, insight: { compatibility: ok, risks: warn, questions_for_seller: ask, confidence, summary: `${garment.name}: ${ok.join(' ')} ${warn.join(' ')}` } });
 });
 
-app.get("/api/products", (_req, res) => {
-  res.json(getAllGarments());
+// --- NEW: VISUAL MODIFICATION ROUTE ---
+app.post('/api/modify-image', async (req, res) => {
+  try {
+    const { image_base64, prompt } = req.body;
+    if (!image_base64 || !prompt) return res.status(400).json({ error: 'Missing image or prompt' });
+    const buffer = Buffer.from(image_base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+    const resultUrl = await modifyGarmentImage(buffer, prompt);
+    res.json({ status: 'success', url: resultUrl });
+  } catch (e: any) {
+    console.error('[modify-image] error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-app.get("/api/products/:id", (req, res) => {
-  const garment = getGarmentById(req.params.id);
-
-  if (!garment) {
-    res.status(404).json({ error: "Garment not found." });
-    return;
-  }
-
-  res.json(garment);
-});
-
-app.post("/api/evaluate", (req, res) => {
-  const body = req.body ?? {};
-  const profile = body.profile ?? body.user_profile;
-  const garmentId = body.garmentId ?? body.garment_id;
-
-  if (!profile || typeof profile !== "object") {
-    res.status(400).json({ error: "A user profile is required." });
-    return;
-  }
-
-  const garment = getGarmentById(typeof garmentId === "string" ? garmentId : "adaptive-jacket-001");
-  if (!garment) {
-    res.status(404).json({ error: "Garment not found." });
-    return;
-  }
+// --- UPDATED: VTO ROUTE (Handles both base64 and URLs) ---
 app.post('/api/try-on', async (req, res) => {
-    const { photo, garment_id } = req.body;
-
-    if (!photo || !garment_id) {
-        return res.status(400).json({ status: 'error', message: 'Missing photo or garment_id' });
-    }
-
-    // 1. Find garment to get image path
-    const garment = garmentsData.find(g => g.id === garment_id);
-    if (!garment || !garment.image_path) {
-        return res.status(400).json({ status: 'error', message: 'Garment not found or missing image_path' });
-    }
-
-    // 2. Resolve absolute path (e.g., /home/user/.../public/garments/jacket.jpg)
-    const garmentImagePath = path.join(process.cwd(), 'public', garment.image_path);
-
-    // 3. Run VTO
-    const result = await runClothesVTO(photo, garmentImagePath);
+  try {
+    const { person_base64, garment_base64, garment_url } = req.body;
+    if (!person_base64) return res.status(400).json({ error: 'Missing person image' });
     
-    res.json(result);
+    const personBuffer = Buffer.from(person_base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+    let garmentBuffer: Buffer;
+
+    if (garment_base64) {
+      garmentBuffer = Buffer.from(garment_base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+    } else if (garment_url) {
+      const imgRes = await fetch(garment_url);
+      garmentBuffer = Buffer.from(await imgRes.arrayBuffer());
+    } else {
+      return res.status(400).json({ error: 'Missing garment image' });
+    }
+
+    const resultUrl = await runClothesVTO(personBuffer, garmentBuffer);
+    res.json({ status: 'success', url: resultUrl });
+  } catch (e: any) {
+    console.error('[try-on] error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-  const safeProfile = profile as UserProfile;
-  const result = generateFullReview(safeProfile, garment);
-  res.json({
-    ...result.insight,
-    user_profile: result.user_profile,
-    garment: result.garment,
-    timestamp: result.timestamp,
-    mode: result.mode,
-    audio_summary: result.audio_summary,
-    markdown_summary: result.markdown_summary,
-    seller_email_template: result.seller_email_template,
-  });
+// SPA Fallback
+app.get('*', (_req, res) => {
+  const index = path.join(process.cwd(), 'public', 'index.html');
+  if (fs.existsSync(index)) return res.sendFile(index);
+  res.status(404).send('Not found');
 });
 
-app.get("*", (_req, res) => {
-  res.sendFile(path.resolve(__dirname, "../public/index.html"));
-});
-
-app.listen(port, () => {
-  console.log(`Aequidrape running at http://localhost:${port}`);
-});
-
-import { adaptGarment } from './modify';
-app.post('/api/modify', async (req, res) => {
-  const { prompt } = req.body || {};
-  if (!prompt) return res.status(400).json({ mods: [], patch: {} });
-  res.json(await adaptGarment(prompt));
-});
+app.listen(PORT, () => console.log(`[server] Running at http://localhost:${PORT} with ${garments.length} garments`));
