@@ -185,13 +185,17 @@ function uploadPhoto() { document.getElementById('photo-upload').click(); }
 function onPhotoFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
-  STATE.photo = { key: 'custom', src: URL.createObjectURL(file), custom: true };
-  document.querySelectorAll('.thumb-btn').forEach(b => b.classList.remove('active'));
-  input.closest('.thumb-col').querySelector('.upload').classList.add('active');
-  document.getElementById('stage-before').src = STATE.photo.src;
-  document.getElementById('stage-after').src = STATE.photo.src;
-  document.getElementById('consent-row').hidden = false;
-  resetStage();
+  const reader = new FileReader();
+  reader.onload = () => {
+    STATE.photo = { key: 'custom', src: reader.result, custom: true };
+    document.querySelectorAll('.thumb-btn').forEach(b => b.classList.remove('active'));
+    input.closest('.thumb-col').querySelector('.upload').classList.add('active');
+    document.getElementById('stage-before').src = STATE.photo.src;
+    document.getElementById('stage-after').src = STATE.photo.src;
+    document.getElementById('consent-row').hidden = false;
+    resetStage();
+  };
+  reader.readAsDataURL(file);
 }
 
 function renderGarmentList() {
@@ -222,22 +226,34 @@ function resetStage() {
 
 function setCmp(v) { document.getElementById('stage').style.setProperty('--pos', v + '%'); }
 
-function runTryOn() {
+async function runTryOn() {
   if (STATE.photo.custom && !document.getElementById('consent').checked) {
-    studioStatus('Confirm the consent box to use your own photo, or pick one of the demo photos.');
-    return;
+    studioStatus('Confirm the consent box to use your own photo, or pick a demo photo.'); return;
   }
   if (!STATE.garmentId) { studioStatus('Choose a garment first.'); return; }
   const stage = document.getElementById('stage');
   stage.classList.add('loading');
-  studioStatus('Generating preview...');
-  setTimeout(async () => {
-    stage.classList.remove('loading');
-    ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = false; });
-    setCmp(50);
-    studioStatus('Drag the slider to compare original and preview.');
-    await evaluate();
-  }, 900);
+  studioStatus('Contacting YouCam Clothes VTO...');
+  let result = null;
+  try {
+    const res = await fetch('/api/try-on', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo: STATE.photo.src, garment_id: STATE.garmentId }),
+    });
+    if (res.ok) result = await res.json();
+  } catch { /* offline */ }
+  stage.classList.remove('loading');
+  ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = false; });
+  setCmp(50);
+  if (result && result.url) {
+    setTryOnResult(result.url);
+    document.getElementById('tag-after').textContent = result.status === 'live' ? 'YouCam live' : 'YouCam cached';
+    studioStatus('Real render ready. Drag the slider to compare.');
+  } else {
+    document.getElementById('tag-after').textContent = 'Simulated';
+    studioStatus('YouCam unavailable (' + ((result && result.error) || 'garment image missing') + '). Showing simulated drape.');
+  }
+  await evaluate();
 }
 
 /** YouCam integration point: call your /api/try-on, then setTryOnResult(url). */
@@ -523,4 +539,120 @@ function applyNeed(kind) {
   if (kind === 'prosthetic') STATE.profile.mobility_aids = ['prosthetic'];
   updateProfileBadge();
   navigateTo('shop');
+}
+
+/* ================= demo contrast (Decision B) ================= */
+const DEMO_PROFILES = {
+  A: { label: 'Profile A', who: 'Seated · limited dexterity · wheelchair', posture: 'seated', dexterity: 'limited', sensory: ['tag-free'], mobility_aids: ['wheelchair'], fit_concerns: ['back-coverage'] },
+  B: { label: 'Profile B', who: 'Standing · standard dexterity', posture: 'standing', dexterity: 'standard', sensory: [], mobility_aids: [], fit_concerns: [] },
+};
+
+function runDemoContrast() {
+  const g = catalog().find(p => p.id === 'adaptive-jacket-001') || catalog()[0];
+  const saved = STATE.profile;
+  const html = ['A', 'B'].map(k => {
+    const { label, who, ...prof } = DEMO_PROFILES[k];
+    STATE.profile = prof;
+    const ins = localInsight(g);
+    const fill = { high: 'high', moderate: 'moderate', low: 'low' }[ins.confidence] || 'moderate';
+    const rows = [
+      ...ins.compatibility.slice(0, 2).map(t => '<li>+ ' + t + '</li>'),
+      ...ins.risks.slice(0, 2).map(t => '<li>- ' + t + '</li>'),
+    ].join('');
+    return `
+    <div class="contrast-card">
+      <h4>${label} — <span style="text-transform:capitalize">${ins.confidence}</span> confidence</h4>
+      <p class="who">${who} vs ${g.name}</p>
+      <div class="mini-gauge" style="margin:0">
+        <div class="bar"><div class="fill ${fill}"></div></div>
+      </div>
+      <ul>${rows || '<li>No strong signals from available data.</li>'}</ul>
+    </div>`;
+  }).join('');
+  STATE.profile = saved;
+  const panel = document.getElementById('contrast-panel');
+  panel.innerHTML = html;
+  panel.hidden = false;
+}
+
+/* ================= adaptation prompts ================= */
+function parseAdaptationClient(prompt) {
+  const p = prompt.toLowerCase();
+  const mods = []; const patch = {};
+  const side = (p.match(/\b(left|right|both)\b/) || [])[1] || 'left';
+  if (/zip/.test(p)) { mods.push({ type: 'side-zipper', side, label: 'Full ' + side + '-side zipper' }); patch.closure_type = 'side zippers'; }
+  if (/magnet/.test(p)) { mods.push({ type: 'magnetic', label: 'Magnetic closure' }); patch.closure_type = 'magnetic'; }
+  if (/velcro|hook|loop/.test(p)) { mods.push({ type: 'hook-loop', label: 'Hook-and-loop closure' }); patch.closure_type = 'hook-and-loop'; }
+  if (/tag/.test(p)) { mods.push({ type: 'tagless', label: 'Tagless / printed label' }); patch.tags = ['tag-free']; }
+  if (/seam/.test(p)) { mods.push({ type: 'flat-seams', label: 'Flat, repositioned seams' }); patch.seams = 'Flat, repositioned'; }
+  if (/(long|raise|extend|high).*(back|rise|coverage)/.test(p)) { mods.push({ type: 'back-rise', label: 'Extended back rise' }); patch.back_rise = 'high'; }
+  if (/loose|relax|wide|room/.test(p)) { mods.push({ type: 'ease', label: 'Added ease, lower compression' }); patch.stretch = 'high'; }
+  if (/pocket/.test(p)) { mods.push({ type: 'pocket', side, label: 'Relocated ' + side + ' pocket' }); patch.pocket_access = 'Seated-reachable'; }
+  if (/one.?hand/.test(p)) { mods.push({ type: 'one-hand', label: 'One-handed pulls' }); patch.closure_type = patch.closure_type || 'magnetic'; }
+  return { mods, patch };
+}
+
+function drawOverlays(mods) {
+  const svg = document.querySelector('#detail-art svg');
+  if (!svg) return;
+  svg.querySelectorAll('.mod-overlay').forEach(n => n.remove());
+  const NS = 'http://www.w3.org/2000/svg';
+  for (const m of mods) {
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('class', 'mod-overlay');
+    g.setAttribute('stroke', '#c97a3c'); g.setAttribute('stroke-width', '2.5');
+    g.setAttribute('fill', 'none'); g.setAttribute('stroke-dasharray', '5 4');
+    if (m.type === 'side-zipper') {
+      const l = document.createElementNS(NS, 'line');
+      const x = m.side === 'right' ? 68 : 32;
+      l.setAttribute('x1', x); l.setAttribute('y1', 24); l.setAttribute('x2', x); l.setAttribute('y2', 110);
+      g.appendChild(l);
+    } else if (m.type === 'magnetic' || m.type === 'one-hand') {
+      for (let y = 30; y <= 100; y += 14) {
+        const c = document.createElementNS(NS, 'circle');
+        c.setAttribute('cx', 50); c.setAttribute('cy', y); c.setAttribute('r', 2.6); c.setAttribute('fill', '#c97a3c');
+        g.appendChild(c);
+      }
+    } else if (m.type === 'hook-loop') {
+      const r = document.createElementNS(NS, 'rect');
+      r.setAttribute('x', 44); r.setAttribute('y', 40); r.setAttribute('width', 12); r.setAttribute('height', 40);
+      g.appendChild(r);
+    } else if (m.type === 'pocket') {
+      const r = document.createElementNS(NS, 'rect');
+      r.setAttribute('x', m.side === 'right' ? 60 : 34); r.setAttribute('y', 70);
+      r.setAttribute('width', 10); r.setAttribute('height', 12);
+      g.appendChild(r);
+    } else if (m.type === 'back-rise') {
+      const p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', 'M30 112 L70 112 L70 120 L30 120 Z');
+      g.appendChild(p);
+    } else if (m.type === 'tagless') {
+      const l = document.createElementNS(NS, 'line');
+      l.setAttribute('x1', 44); l.setAttribute('y1', 14); l.setAttribute('x2', 56); l.setAttribute('y2', 20);
+      g.appendChild(l);
+    }
+    svg.appendChild(g);
+  }
+}
+
+async function applyAdaptation() {
+  const prompt = document.getElementById('adapt-prompt').value.trim();
+  const status = document.getElementById('adapt-status');
+  if (!prompt || !STATE.current) return;
+  status.textContent = 'Parsing adaptation...';
+  let data = null;
+  try {
+    const res = await fetch('/api/modify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, garment_id: STATE.current.id }) });
+    if (res.ok) data = await res.json();
+  } catch { /* offline */ }
+  if (!data || !data.mods) data = { ...parseAdaptationClient(prompt), source: 'rules' };
+  if (!data.mods.length) { status.textContent = 'No recognized modification. Try: zipper, magnetic, velcro, tag, seams, pocket, looser, longer back.'; return; }
+  const merged = { ...STATE.current, ...data.patch };
+  document.getElementById('adapt-mods').innerHTML =
+    data.mods.map(m => `<li><strong>${m.label}</strong><span>${m.type}</span></li>`).join('');
+  drawOverlays(data.mods);
+  const ins = localInsight(merged);
+  STATE.insight = ins; STATE.reviewMeta = null;
+  renderGauge(ins, merged); renderReviewExtras();
+  status.textContent = (data.source === 'local-llm' ? 'Local model' : 'Spec engine') + ` applied ${data.mods.length} modification(s). Gauge re-scored.`;
 }

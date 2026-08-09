@@ -13,7 +13,8 @@
     "sleeve_adjustable": true,
     "pocket_access": "Side seams accessible from seated position, deep interior pockets",
     "price_range": "$120-160",
-    "colors": ["navy", "charcoal", "tan"]
+    "colors": ["navy", "charcoal", "tan"],
+    "image_path": "garments/jacket.jpg"
   },
   {
     "id": "seated-pants-001",
@@ -29,7 +30,8 @@
     "sleeve_adjustable": false,
     "pocket_access": "Hip pockets reachable from seated, reinforced side pockets",
     "price_range": "$90-130",
-    "colors": ["khaki", "olive", "black", "navy"]
+    "colors": ["khaki", "olive", "black", "navy"],
+    "image_path": "garments/pants.jpg"
   },
   {
     "id": "onehanded-shirt-001",
@@ -45,7 +47,8 @@
     "sleeve_adjustable": true,
     "pocket_access": "Chest pockets with easy-open magnetic flap closures",
     "price_range": "$70-100",
-    "colors": ["white", "light-blue", "light-gray", "cream"]
+    "colors": ["white", "light-blue", "light-gray", "cream"],
+    "image_path": "garments/shirt.jpg"
   },
   {
     "id": "accessible-hoodie-001",
@@ -61,7 +64,8 @@
     "sleeve_adjustable": true,
     "pocket_access": "Deep kangaroo pockets, side zip pocket for small devices",
     "price_range": "$110-150",
-    "colors": ["gray", "navy", "black", "burgundy"]
+    "colors": ["gray", "navy", "black", "burgundy"],
+    "image_path": "garments/hoodie.jpg"
   },
   {
     "id": "adaptive-leggings-001",
@@ -77,6 +81,7 @@
     "sleeve_adjustable": false,
     "pocket_access": "Side pockets suitable for medical devices, stoma bags, or personal items",
     "price_range": "$85-120",
-    "colors": ["black", "dark-gray", "navy", "burgundy"]
+    "colors": ["black", "dark-gray", "navy", "burgundy"],
+    "image_path": "garments/leggings.jpg"
   }
 ]

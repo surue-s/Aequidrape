@@ -524,3 +524,26 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; margin-top: 
 
 /* Keyboard visibility for the invisible compare slider */
 .stage:has(.cmp-range:focus-visible) { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+
+/* AA contrast: muted ink-3 (~2.9:1) was used for readable text */
+.num-row .n,
+.extras-report summary,
+.stage-empty p { color: var(--ink-2); }
+
+/* Touch targets: nav links were ~32px tall */
+.nav-main a { padding: 12px 0; }
+
+.contrast-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
+.contrast-card { border: 1px solid var(--line); border-radius: var(--r-l); padding: 20px 24px; background: var(--bg); }
+.contrast-card h4 { font-family: var(--font-display); font-size: 1.1rem; font-weight: 500; margin-bottom: 4px; }
+.contrast-card .who { font-size: 13px; color: var(--ink-2); margin-bottom: 14px; }
+.contrast-card ul { list-style: none; margin: 12px 0 0; padding: 0; font-size: 14px; color: var(--ink-2); display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 720px) { .contrast-grid { grid-template-columns: 1fr; } }
+
+.adapt-panel { border: 1px solid var(--line); border-radius: var(--r-l); padding: 20px 24px; margin-bottom: 36px; }
+.adapt-row { display: flex; gap: 12px; }
+.adapt-row input { flex: 1; border: 1px solid var(--line-strong); border-radius: var(--r-pill); padding: 12px 20px; font: inherit; font-size: 14px; }
+.adapt-mods { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--ink-2); }
+.adapt-mods li { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px dashed var(--line); padding-bottom: 6px; }
+.adapt-mods strong { color: var(--ink); }

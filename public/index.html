@@ -198,6 +198,11 @@
           </div>
         </div>
       </div>
+                <div style="margin-top:32px; display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap;">
+            <p class="lede" style="margin:0">Same garment, two profiles. The variance is the product.</p>
+            <button class="btn-ghost-pill" onclick="runDemoContrast()">Show demo contrast</button>
+          </div>
+          <div class="contrast-grid" id="contrast-panel" hidden></div>
 
       <!-- EDITORIAL -->
       <div class="editorial">
@@ -455,7 +460,19 @@
                 <div class="report-body" id="report-body"></div>
               </details>
             </div> 
-            
+            <div class="adapt-panel">
+              <h3 class="extras-title">Adapt this garment</h3>
+              <p class="lede" style="margin-bottom:14px">Describe a modification in plain language. The spec, the drawing, and the compatibility score update instantly.</p>
+              <div class="adapt-row">
+                <input id="adapt-prompt" type="text" placeholder="e.g. add a full zipper on the whole left side" />
+                <button class="btn-dark" onclick="applyAdaptation()">Adapt
+                  <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span>
+                </button>
+              </div>
+              <p class="extras-status" id="adapt-status" role="status"></p>
+              <ul class="adapt-mods" id="adapt-mods"></ul>
+            </div>
+
             <div class="tabs-bar" role="tablist">
               <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('description', event)">Description</button>
               <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('questions', event)">Questions for seller</button>
