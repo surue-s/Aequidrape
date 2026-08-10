@@ -77,42 +77,46 @@
           </div>
 
           <div class="studio-grid">
-            <!-- 01 PHOTO -->
-            <div data-aos="fade-up">
-              <p class="step-label"><b>01</b> Your photo</p>
-              <div class="thumb-col" role="group" aria-label="Choose a photo">
-                <button class="thumb-btn active" onclick="selectPhoto('standing', this)"><img src="/demo-images/01-standing-original.jpg" alt="Standing" /></button>
-                <button class="thumb-btn" onclick="selectPhoto('seated', this)"><img src="/demo-images/02-seated-original.jpg" alt="Seated" /></button>
-                <button class="thumb-btn" onclick="selectPhoto('wheelchair', this)"><img src="/demo-images/03-wheelchair-original.jpg" alt="Wheelchair user" /></button>
-                <button class="thumb-btn" onclick="selectPhoto('prosthetic', this)"><img src="/demo-images/04-prosthetic-original.jpg" alt="Prosthetic user" /></button>
-                <button class="thumb-btn upload" onclick="uploadPhoto()">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
-                  Yours
-                </button>
-                <input type="file" id="photo-upload" accept="image/*" class="sr-only" onchange="onPhotoFile(this)" />
+            <!-- LEFT: PREVIEW & PHOTO -->
+            <div class="studio-left">
+              <!-- STAGE -->
+              <div class="stage" id="stage" data-aos="fade-up" data-aos-delay="80">
+                <div class="layer before"><img class="base" id="stage-before" src="/demo-images/01-standing-original.jpg" alt="Original photo" /></div>
+                <div class="layer after" id="layer-after" hidden><img class="base" id="stage-after" src="" alt="Try-on result" /></div>
+                <span class="tag l">Original</span>
+                <span class="tag r" id="tag-after" hidden>Try-on</span>
+                <div class="cmp-line" id="cmp-line" hidden></div>
+                <div class="cmp-knob" id="cmp-knob" hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/></svg>
+                </div>
+                <input type="range" class="cmp-range" id="cmp-range" min="0" max="100" value="50" hidden aria-label="Compare original and try-on" oninput="setCmp(this.value)" />
               </div>
-              <label class="consent-row" id="consent-row" hidden>
-                <input type="checkbox" id="consent" />
-                <span>I consent to processing this photo for the preview. It is never stored.</span>
-              </label>
+
+              <!-- 01 PHOTO -->
+              <div data-aos="fade-up" style="margin-top: 24px;">
+                <p class="step-label"><b>01</b> Your photo</p>
+                <div class="thumb-col" role="group" aria-label="Choose a photo">
+                  <button class="thumb-btn active" onclick="selectPhoto('standing', this)"><img src="/demo-images/01-standing-original.jpg" alt="Standing" /></button>
+                  <button class="thumb-btn" onclick="selectPhoto('seated', this)"><img src="/demo-images/02-seated-original.jpg" alt="Seated" /></button>
+                  <button class="thumb-btn" onclick="selectPhoto('wheelchair', this)"><img src="/demo-images/03-wheelchair-original.jpg" alt="Wheelchair user" /></button>
+                  <button class="thumb-btn" onclick="selectPhoto('prosthetic', this)"><img src="/demo-images/04-prosthetic-original.jpg" alt="Prosthetic user" /></button>
+                  <button class="thumb-btn upload" onclick="uploadPhoto()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+                    Yours
+                  </button>
+                  <input type="file" id="photo-upload" accept="image/*" class="sr-only" onchange="onPhotoFile(this)" />
+                </div>
+                <label class="consent-row" id="consent-row" hidden>
+                  <input type="checkbox" id="consent" />
+                  <span>I consent to processing this photo for the preview. It is never stored.</span>
+                </label>
+              </div>
             </div>
 
-            <!-- STAGE -->
-            <div class="stage" id="stage" data-aos="fade-up" data-aos-delay="80">
-              <div class="layer before"><img class="base" id="stage-before" src="/demo-images/01-standing-original.jpg" alt="Original photo" /></div>
-              <div class="layer after" id="layer-after" hidden><img class="base" id="stage-after" src="" alt="Try-on result" /></div>
-              <span class="tag l">Original</span>
-              <span class="tag r" id="tag-after" hidden>Try-on</span>
-              <div class="cmp-line" id="cmp-line" hidden></div>
-              <div class="cmp-knob" id="cmp-knob" hidden>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/></svg>
-              </div>
-              <input type="range" class="cmp-range" id="cmp-range" min="0" max="100" value="50" hidden aria-label="Compare original and try-on" oninput="setCmp(this.value)" />
-            </div>
-
-            <!-- 02 GARMENT + MODIFY + 03 RUN -->
-            <div data-aos="fade-up" data-aos-delay="140">
-              <p class="step-label"><b>02</b> Garment</p>
+            <!-- RIGHT: GARMENT & CONTROLS -->
+            <div class="studio-right" data-aos="fade-up" data-aos-delay="140">
+              <!-- 02 GARMENT -->
+              <p class="step-label"><b>02</b> Try-on bag</p>
               <div class="garment-list" id="garment-list" role="group" aria-label="Choose a garment"></div>
               <button class="btn-ghost-pill" style="margin-top:10px" onclick="document.getElementById('garment-upload').click()">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
@@ -124,6 +128,7 @@
                 <small id="garment-preview-label">Your garment</small>
               </div>
 
+              <!-- ADAPT -->
               <p class="step-label" style="margin-top:20px"><b>+</b> Adapt it</p>
               <div class="ai-input-wrapper">
                 <input type="text" id="modify-prompt" placeholder="e.g. add a full zipper on the left side" />
@@ -131,6 +136,7 @@
               </div>
               <p class="studio-status" id="modify-status"></p>
 
+              <!-- 03 RUN -->
               <p class="step-label" style="margin-top:20px"><b>03</b> Try-on</p>
               <button class="btn-dark" id="run-vto" onclick="runTryOn()" style="width:100%; justify-content:space-between;">
                 Generate preview
@@ -356,6 +362,10 @@
               <button class="btn-dark">Add to bag
                 <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
               </button>
+            </div>
+            <div class="detail-actions">
+               <button id="add-to-cart-btn" class="btn-line">Add to try-on bag</button>
+                <button class="btn-dark" onclick="tryOnThis()">Try on now</button>
             </div>
 
             <div class="tabs-bar" role="tablist">

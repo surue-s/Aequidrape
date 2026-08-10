@@ -539,3 +539,31 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; }
 }
 .ai-input-wrapper button:hover { background: var(--accent-deep); }
 .studio-status { font-size: 13px; color: var(--ink-2); margin-top: 8px; min-height: 20px; font-weight: 500; }
+
+/* Studio unified layout */
+.studio-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+
+.studio-left .stage {
+  aspect-ratio: 3/4;
+  width: 100%;
+}
+
+.studio-right {
+  position: sticky;
+  top: 100px; /* Keeps controls visible while scrolling on desktop */
+}
+
+@media (max-width: 1024px) {
+  .studio-grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .studio-right {
+    position: static;
+  }
+}

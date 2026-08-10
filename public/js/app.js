@@ -3,6 +3,7 @@
 const STATE = {
   page: 'home',
   profile: JSON.parse(localStorage.getItem('aequidrape_profile') || 'null'),
+  cart: JSON.parse(localStorage.getItem('aequidrape_cart') || '[]'), // NEW: Cart state
   products: [],
   garmentId: null,
   current: null,
@@ -28,6 +29,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateProfileBadge();
   await loadProducts();
   renderGarmentList();
+  
+  // NEW: Knob drag listeners for compare slider
+  const knob = document.getElementById('cmp-knob');
+  const range = document.getElementById('cmp-range');
+  const stage = document.getElementById('stage');
+  if (knob && range && stage) {
+    let isDragging = false;
+    const startDrag = (e) => { isDragging = true; e.preventDefault(); };
+    const endDrag = () => isDragging = false;
+    const moveDrag = (e) => {
+      if (!isDragging) return;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const rect = stage.getBoundingClientRect();
+      let pct = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+      range.value = pct;
+      setCmp(pct);
+    };
+    knob.addEventListener('mousedown', startDrag);
+    knob.addEventListener('touchstart', startDrag, { passive: false });
+    document.addEventListener('mouseup', endDrag);
+    document.addEventListener('touchend', endDrag);
+    document.addEventListener('mousemove', moveDrag);
+    document.addEventListener('touchmove', moveDrag, { passive: false });
+  }
+
   window.addEventListener('hashchange', () => navigateTo(location.hash.slice(1) || 'home'));
   navigateTo(location.hash.slice(1) || 'home');
 });
@@ -45,6 +71,26 @@ async function loadProducts() {
 
 function catalog() { return STATE.products; }
 function priceOf(g) { return g.price ?? 0; }
+
+/* ---------- cart ---------- */
+function addToCart(id) {
+  if (!STATE.cart.includes(id)) {
+    STATE.cart.push(id);
+    localStorage.setItem('aequidrape_cart', JSON.stringify(STATE.cart));
+    updateCartUI();
+  }
+}
+
+function updateCartUI() {
+  renderProducts();
+  if (STATE.page === 'home') renderProducts('featured-products', catalog().slice(0, 4));
+  renderGarmentList();
+  const cartBtn = document.getElementById('add-to-cart-btn');
+  if (cartBtn && STATE.current) {
+    cartBtn.textContent = STATE.cart.includes(STATE.current.id) ? 'In bag' : 'Add to try-on bag';
+    cartBtn.disabled = STATE.cart.includes(STATE.current.id);
+  }
+}
 
 /* ---------- routing ---------- */
 function navigateTo(page) {
@@ -136,7 +182,15 @@ function onPhotoFile(input) {
 function renderGarmentList() {
   const list = document.getElementById('garment-list');
   if (!list) return;
-  list.innerHTML = catalog().map(g => `
+  
+  // NEW: Only show items in cart
+  const cartItems = catalog().filter(g => STATE.cart.includes(g.id));
+  if (cartItems.length === 0) {
+    list.innerHTML = '<p style="color:var(--ink-2); padding: 12px 0; font-size: 0.95rem; text-align: center;">Your try-on bag is empty.<br/>Add garments from the shop to try them on.</p>';
+    return;
+  }
+  
+  list.innerHTML = cartItems.map(g => `
     <button class="garment-opt ${STATE.garmentId === g.id ? 'active' : ''}" onclick="selectGarment('${g.id}', this)">
       <span><strong>${g.name}</strong><small>${g.closure_type}</small></span>
       <span class="price">$${priceOf(g)}</span>
@@ -220,7 +274,21 @@ function resetStage() {
   document.getElementById('studio-status').textContent = '';
 }
 
-function setCmp(v) { document.getElementById('stage').style.setProperty('--pos', v + '%'); }
+// UPDATED: Apply inline styles as robust fallback for CSS variable mapping
+function setCmp(v) {
+  const stage = document.getElementById('stage');
+  if (!stage) return;
+  stage.style.setProperty('--pos', v + '%');
+  
+  const afterLayer = document.getElementById('layer-after');
+  if (afterLayer) afterLayer.style.clipPath = `inset(0 0 0 ${v}%)`;
+  
+  const line = document.getElementById('cmp-line');
+  if (line) line.style.left = `${v}%`;
+  
+  const knob = document.getElementById('cmp-knob');
+  if (knob) knob.style.left = `${v}%`;
+}
 
 async function runTryOn() {
   const status = document.getElementById('studio-status');
@@ -266,7 +334,6 @@ async function evaluate() {
   } catch {}
   if (!insight) insight = { compatibility: [], risks: [], questions_for_seller: [], summary: '' };
 
-  // Fold free-text notes into seller questions
   const notes = [STATE.profile?.dex_notes, STATE.profile?.aid_other].filter(Boolean).join('; ');
   if (notes) insight.questions_for_seller = [...(insight.questions_for_seller || []), 'Can this garment accommodate: ' + notes + '?'];
 
@@ -318,7 +385,9 @@ function renderProducts(containerId = 'products', list = null) {
       <div class="p-media">
         <img src="/${g.image_path}" alt="${g.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'" />
         <span class="flag">${g.closure_type}</span>
-        <button class="quick" onclick="event.stopPropagation(); showProduct('${g.id}')">View garment</button>
+        <button class="quick" onclick="event.stopPropagation(); addToCart('${g.id}'); this.textContent='In bag'; this.disabled=true;">
+          ${STATE.cart.includes(g.id) ? 'In bag' : 'Add to bag'}
+        </button>
       </div>
       <div class="p-body">
         <h3>${g.name}</h3>
@@ -350,8 +419,20 @@ function showProduct(id) {
   const set = (sid, v) => { const el = document.getElementById(sid); if (el) el.textContent = v || '—'; };
   set('spec-closure', g.closure_type); set('spec-back-rise', g.back_rise);
   set('spec-stretch', g.stretch); set('spec-seams', g.seams); set('spec-pockets', g.pocket_access);
+  
+  // NEW: Hook up add to cart button in detail view
+  const cartBtn = document.getElementById('add-to-cart-btn');
+  if (cartBtn) {
+    cartBtn.textContent = STATE.cart.includes(g.id) ? 'In bag' : 'Add to try-on bag';
+    cartBtn.disabled = STATE.cart.includes(g.id);
+    cartBtn.onclick = () => {
+      addToCart(g.id);
+      cartBtn.textContent = 'Added to bag';
+      cartBtn.disabled = true;
+    };
+  }
+
   evaluate().then(() => {
-    // mirror studio notes into detail gauge
     if (STATE.insight) {
       fillList('d-ok', STATE.insight.compatibility);
       fillList('d-warn', STATE.insight.risks);
