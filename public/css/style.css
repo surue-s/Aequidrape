@@ -593,8 +593,8 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; }
 .stage { cursor: ew-resize; }
 .stage .layer, 
 .stage .layer img.base, 
-.stage .cmp-line, 
-.stage .cmp-knob, 
+.stage .cmp-line { z-index: 3; }
+.stage .cmp-knob { z-index: 4; }
 .stage .cmp-range, 
 .stage .tag { 
   pointer-events: none; 

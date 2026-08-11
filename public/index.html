@@ -242,7 +242,7 @@
               <h3>Hand and arm function</h3>
               <p>Slide to wherever you are today — and add detail in your own words.</p>
               <div class="range-row">
-                <input type="range" id="dex-range" min="0" max="2" step="1" value="0" oninput="updateDexLabel(this.value)" aria-label="Hand and arm function" />
+                <input type="range" class="cmp-range" id="cmp-range" min="0" max="100" value="50" hidden aria-label="Compare original and try-on" oninput="setCmp(this.value)" />
                 <div class="range-labels"><span>Full use of both hands</span><span>Limited grip</span><span>One hand</span></div>
                 <p class="studio-status" id="dex-label" style="margin-top:8px">Full use of both hands</p>
               </div>
