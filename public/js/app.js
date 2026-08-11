@@ -424,23 +424,27 @@ function renderProducts(containerId = 'products', list = null) {
   const sort = document.getElementById('sort-select')?.value;
   if (sort === 'price-low') items.sort((a, b) => priceOf(a) - priceOf(b));
   if (sort === 'price-high') items.sort((a, b) => priceOf(b) - priceOf(a));
-  container.innerHTML = items.map(g => `
+  
+  container.innerHTML = items.map(g => {
+    const inCart = STATE.cart.includes(g.id);
+    return `
     <article class="p-card" onclick="showProduct('${g.id}')">
       <div class="p-media">
         <img src="/${g.image_path}" alt="${g.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'" />
         <span class="flag">${g.closure_type}</span>
-        <button class="quick" onclick="event.stopPropagation(); addToCart('${g.id}'); this.textContent='In bag'; this.disabled=true;">
-          ${STATE.cart.includes(g.id) ? 'In bag' : 'Add to bag'}
-        </button>
+        <div class="cart-actions">
+          <button class="quick ${inCart ? 'hidden' : ''}" onclick="event.stopPropagation(); addToCart('${g.id}')">Add to bag</button>
+          <button class="quick remove ${!inCart ? 'hidden' : ''}" onclick="event.stopPropagation(); removeFromBag('${g.id}')">Remove</button>
+        </div>
       </div>
       <div class="p-body">
         <h3>${g.name}</h3>
         <p class="meta">${g.fabric || ''} · ${g.stretch} stretch</p>
         <div class="row"><span class="price">$${priceOf(g)}</span></div>
       </div>
-    </article>`).join('') || '<p style="color:var(--ink-2)">No garments match these filters.</p>';
+    </article>`;
+  }).join('') || '<p style="color:var(--ink-2)">No garments match these filters.</p>';
 }
-
 function toggleFilter(btn) {
   const f = btn.dataset.filter;
   STATE.filters.has(f) ? STATE.filters.delete(f) : STATE.filters.add(f);
@@ -485,6 +489,28 @@ function showProduct(id) {
       const q = document.getElementById('questions-list');
       if (q) q.innerHTML = (STATE.insight.questions_for_seller || []).map(t => `<label class="q-item"><input type="checkbox" /><span>${t}</span></label>`).join('');
     }
+    
+    // Run Comfort Engine
+    const comfort = getComfortInsights(STATE.profile, g);
+    const adaptPanel = document.getElementById('adapt-list');
+    if (adaptPanel) {
+      let html = '<h4 style="margin-bottom:12px; color:var(--accent);">AI Comfort Assessment</h4>';
+      if (comfort.insights.length === 0) {
+        html += '<p style="color:var(--ink-2); font-size:14px;">This garment is highly compatible with your profile.</p>';
+      } else {
+        html += '<ul style="margin-bottom:16px;">' + comfort.insights.map(i => `<li style="margin-bottom:8px; font-size:14px; color:var(--ink-2);">⚠ ${i}</li>`).join('') + '</ul>';
+      }
+      
+      if (comfort.prompts.length > 0) {
+        html += '<h4 style="margin-bottom:12px;">Suggested Workshop Modifications</h4>';
+        html += comfort.prompts.map(p => `
+          <div class="ai-input-wrapper" style="margin-bottom:10px;">
+            <input type="text" value="${p}" id="prompt-${g.id}" readonly />
+            <button onclick="quickModify('${g.id}', '${p}')">Modify</button>
+          </div>`).join('');
+      }
+      adaptPanel.innerHTML = html;
+    }
   });
   navigateTo('product');
 }
@@ -512,4 +538,19 @@ function switchTab(name, e) {
   document.getElementById(name)?.classList.add('active');
   e.currentTarget.classList.add('active');
   e.currentTarget.setAttribute('aria-selected', 'true');
+}
+
+function quickModify(garmentId, prompt) {
+  if (!STATE.cart.includes(garmentId)) addToCart(garmentId);
+  STATE.garmentId = garmentId;
+  STATE.current = catalog().find(p => p.id === garmentId);
+  
+  // Pre-fill the prompt and navigate to workshop
+  setTimeout(() => {
+    const promptInput = document.getElementById('modify-prompt');
+    if (promptInput) promptInput.value = prompt;
+    document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
+  }, 100);
+  
+  navigateTo('home'); // Go to studio
 }

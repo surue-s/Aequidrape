@@ -374,14 +374,16 @@
 
             <div class="tabs-bar" role="tablist">
               <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('description', event)">Description</button>
-              <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('questions', event)">Questions for seller</button>
-              <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('reviews', event)">Reviews</button>
+              <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('questions', event)">Fit Notes</button>
+              <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('adapt', event)">Adapt</button>
             </div>
             <div id="description" class="tab-panel active" role="tabpanel">
               <p style="color:var(--ink-2); font-size:14px">A standard garment. Adapt it in the studio and the notes below update against your profile.</p>
             </div>
             <div id="questions" class="tab-panel" role="tabpanel"><div id="questions-list"></div></div>
-            <div id="reviews" class="tab-panel" role="tabpanel"><p style="color:var(--ink-2); font-size:14px"><em>Community reviews arriving soon.</em></p></div>
+            <div class="tab-panel" id="adapt" role="tabpanel">
+              <div id="adapt-list">Loading assessment...</div>
+            </div>
           </div>
         </div>
       </div>
