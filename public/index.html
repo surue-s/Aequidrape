@@ -68,19 +68,21 @@
         </div>
       </div>
 
-      <!-- STUDIO -->
+ <!-- STUDIO -->
       <div class="studio" id="studio">
         <div class="container">
           <div class="studio-head" data-aos="fade-up">
             <div><span class="eyebrow">The studio</span><h2 class="h-section" style="margin-top:14px">Try it on <em>your</em> reality.</h2></div>
-            <p class="lede">Pick or upload a photo, pick or upload a garment, adapt it with a prompt, then generate a real try-on and drag the slider to compare.</p>
+            <p class="lede">Pick a photo, choose from your bag, adapt the garment, and generate a real try-on.</p>
           </div>
 
           <div class="studio-grid">
-            <!-- LEFT: PREVIEW & PHOTO -->
-            <div class="studio-left">
+            <!-- LEFT: PERSON STUDIO & PREVIEW -->
+            <div class="studio-panel left" data-aos="fade-up">
+              <h3 class="panel-title">Person Studio</h3>
+              
               <!-- STAGE -->
-              <div class="stage" id="stage" data-aos="fade-up" data-aos-delay="80">
+              <div class="stage" id="stage" style="margin-bottom: 24px;">
                 <div class="layer before"><img class="base" id="stage-before" src="/demo-images/01-standing-original.jpg" alt="Original photo" /></div>
                 <div class="layer after" id="layer-after" hidden><img class="base" id="stage-after" src="" alt="Try-on result" /></div>
                 <span class="tag l">Original</span>
@@ -89,11 +91,11 @@
                 <div class="cmp-knob" id="cmp-knob" hidden>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/></svg>
                 </div>
-                <input type="range" class="cmp-range" id="cmp-range" min="0" max="100" value="50" hidden aria-label="Compare original and try-on" oninput="setCmp(this.value)" />
+                <input type="range" class="cmp-range" id="cmp-range" min="0" max="100" value="50" hidden aria-label="Compare original and try-on" />
               </div>
 
               <!-- 01 PHOTO -->
-              <div data-aos="fade-up" style="margin-top: 24px;">
+              <div>
                 <p class="step-label"><b>01</b> Your photo</p>
                 <div class="thumb-col" role="group" aria-label="Choose a photo">
                   <button class="thumb-btn active" onclick="selectPhoto('standing', this)"><img src="/demo-images/01-standing-original.jpg" alt="Standing" /></button>
@@ -113,14 +115,16 @@
               </div>
             </div>
 
-            <!-- RIGHT: GARMENT & CONTROLS -->
-            <div class="studio-right" data-aos="fade-up" data-aos-delay="140">
+            <!-- RIGHT: CLOTHING WORKSHOP -->
+            <div class="studio-panel right" data-aos="fade-up" data-aos-delay="140">
+              <h3 class="panel-title">Clothing Workshop</h3>
+              
               <!-- 02 GARMENT -->
               <p class="step-label"><b>02</b> Try-on bag</p>
               <div class="garment-list" id="garment-list" role="group" aria-label="Choose a garment"></div>
               <button class="btn-ghost-pill" style="margin-top:10px" onclick="document.getElementById('garment-upload').click()">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
-                Upload your own garment
+                Upload custom
               </button>
               <input type="file" id="garment-upload" accept="image/*" class="sr-only" onchange="onGarmentFile(this)" />
               <div class="garment-preview" id="garment-preview" hidden>
@@ -129,7 +133,7 @@
               </div>
 
               <!-- ADAPT -->
-              <p class="step-label" style="margin-top:20px"><b>+</b> Adapt it</p>
+              <p class="step-label" style="margin-top:24px"><b>+</b> Adapt it</p>
               <div class="ai-input-wrapper">
                 <input type="text" id="modify-prompt" placeholder="e.g. add a full zipper on the left side" />
                 <button onclick="runModification()">Modify</button>
@@ -137,7 +141,7 @@
               <p class="studio-status" id="modify-status"></p>
 
               <!-- 03 RUN -->
-              <p class="step-label" style="margin-top:20px"><b>03</b> Try-on</p>
+              <p class="step-label" style="margin-top:24px"><b>03</b> Try-on</p>
               <button class="btn-dark" id="run-vto" onclick="runTryOn()" style="width:100%; justify-content:space-between;">
                 Generate preview
                 <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span>

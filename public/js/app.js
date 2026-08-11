@@ -1,5 +1,6 @@
 /* Aequidrape — single source of truth for frontend logic */
 
+
 const STATE = {
   page: 'home',
   profile: JSON.parse(localStorage.getItem('aequidrape_profile') || 'null'),
@@ -23,6 +24,31 @@ const PHOTOS = {
 const DEX_MAP = ['standard', 'limited', 'one_handed'];
 const DEX_LABELS = ['Full use of both hands', 'Limited grip or strength', 'One hand available'];
 
+
+async function resizeAndCompress(file, maxSize = 1024) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxSize || h > maxSize) {
+          if (w > h) { h = (h / w) * maxSize; w = maxSize; }
+          else { w = (w / h) * maxSize; h = maxSize; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 /* ---------- boot ---------- */
 document.addEventListener('DOMContentLoaded', async () => {
   if (window.AOS) AOS.init({ duration: 700, once: true, disable: matchMedia('(prefers-reduced-motion: reduce)').matches });
@@ -166,18 +192,15 @@ function uploadPhoto() { document.getElementById('photo-upload').click(); }
 function onPhotoFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    STATE.photo = { key: 'custom', src: ev.target.result, custom: true, base64: ev.target.result };
+  resizeAndCompress(file).then(base64 => {
+    STATE.photo = { key: 'custom', src: base64, custom: true, base64: base64 };
     document.querySelectorAll('.thumb-btn').forEach(b => b.classList.remove('active'));
     input.closest('.thumb-col').querySelector('.upload').classList.add('active');
-    document.getElementById('stage-before').src = ev.target.result;
+    document.getElementById('stage-before').src = base64;
     document.getElementById('consent-row').hidden = false;
     resetStage();
-  };
-  reader.readAsDataURL(file);
+  });
 }
-
 /* ---------- studio: garment ---------- */
 function renderGarmentList() {
   const list = document.getElementById('garment-list');
@@ -206,22 +229,20 @@ function selectGarment(id, btn) {
   document.getElementById('modify-status').textContent = '';
 }
 
+
 function onGarmentFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
+  resizeAndCompress(file).then(base64 => {
     STATE.garmentId = null;
-    STATE.garment = { base64: ev.target.result, modifiedUrl: null, custom: true };
+    STATE.garment = { base64: base64, modifiedUrl: null, custom: true };
     document.querySelectorAll('.garment-opt').forEach(b => b.classList.remove('active'));
     const prev = document.getElementById('garment-preview');
     prev.hidden = false;
-    document.getElementById('garment-preview-img').src = ev.target.result;
+    document.getElementById('garment-preview-img').src = base64;
     document.getElementById('garment-preview-label').textContent = 'Your garment';
-  };
-  reader.readAsDataURL(file);
+  });
 }
-
 async function toBase64(url) {
   const res = await fetch(url);
   const blob = await res.blob();
@@ -278,18 +299,41 @@ function resetStage() {
 function setCmp(v) {
   const stage = document.getElementById('stage');
   if (!stage) return;
-  stage.style.setProperty('--pos', v + '%');
-  
-  const afterLayer = document.getElementById('layer-after');
-  if (afterLayer) afterLayer.style.clipPath = `inset(0 0 0 ${v}%)`;
-  
-  const line = document.getElementById('cmp-line');
-  if (line) line.style.left = `${v}%`;
-  
-  const knob = document.getElementById('cmp-knob');
-  if (knob) knob.style.left = `${v}%`;
-}
+  const pct = Math.max(0, Math.min(100, parseFloat(v)));
 
+  // 1. Update CSS variable
+  stage.style.setProperty('--pos', pct + '%');
+
+  // 2. Force clip-path on the after layer
+  const afterLayer = document.getElementById('layer-after');
+  if (afterLayer) {
+    afterLayer.style.clipPath = `inset(0 0 0 ${pct}%)`;
+    afterLayer.style.webkitClipPath = `inset(0 0 0 ${pct}%)`;
+    afterLayer.hidden = false;
+  }
+
+  // 3. Force position on the line and knob
+  const line = document.getElementById('cmp-line');
+  if (line) {
+    line.style.left = `${pct}%`;
+    line.style.transform = `translateX(-50%)`; // Fallback centering
+    line.hidden = false;
+  }
+
+  const knob = document.getElementById('cmp-knob');
+  if (knob) {
+    knob.style.left = `${pct}%`;
+    knob.style.transform = `translate(-50%, -50%)`;
+    knob.hidden = false;
+  }
+
+  // 4. Sync native range input
+  const range = document.getElementById('cmp-range');
+  if (range) {
+    range.value = pct;
+    range.hidden = false;
+  }
+}
 async function runTryOn() {
   const status = document.getElementById('studio-status');
   if (STATE.photo.custom && !document.getElementById('consent').checked) {
@@ -405,6 +449,7 @@ function toggleFilter(btn) {
 }
 
 function sortProducts() { renderProducts(); }
+
 
 /* ---------- product detail ---------- */
 function showProduct(id) {

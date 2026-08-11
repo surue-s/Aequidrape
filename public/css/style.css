@@ -540,30 +540,62 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; }
 .ai-input-wrapper button:hover { background: var(--accent-deep); }
 .studio-status { font-size: 13px; color: var(--ink-2); margin-top: 8px; min-height: 20px; font-weight: 500; }
 
-/* Studio unified layout */
+/* ---------- Studio Panels & Unified Layout ---------- */
+.studio-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  padding: 28px;
+  box-shadow: var(--sh-s);
+}
+.panel-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 500;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+.remove-btn {
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: 50%; border: 1px solid var(--line-strong);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-2); transition: all var(--t-fast) var(--ease);
+}
+.remove-btn:hover {
+  background: var(--risk); color: #fff; border-color: var(--risk);
+}
+
 .studio-grid {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
-  gap: 48px;
+  gap: 32px;
   align-items: start;
 }
 
-.studio-left .stage {
-  aspect-ratio: 3/4;
-  width: 100%;
-}
-
-.studio-right {
+/* Sticky right panel keeps workshop visible while scrolling photos */
+.studio-panel.right {
   position: sticky;
-  top: 100px; /* Keeps controls visible while scrolling on desktop */
+  top: 100px;
 }
 
 @media (max-width: 1024px) {
   .studio-grid {
     grid-template-columns: 1fr;
-    gap: 32px;
+    gap: 24px;
   }
-  .studio-right {
-    position: static;
-  }
+  .studio-panel { padding: 20px; }
+  .studio-panel.right { position: static; }
+}
+
+/* ---------- Slider interaction fix ---------- */
+.stage { cursor: ew-resize; }
+.stage .layer, 
+.stage .layer img.base, 
+.stage .cmp-line, 
+.stage .cmp-knob, 
+.stage .cmp-range, 
+.stage .tag { 
+  pointer-events: none; 
 }
