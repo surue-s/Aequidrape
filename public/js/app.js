@@ -4,7 +4,7 @@ const STATE = {
   page: 'home',
   profile: JSON.parse(localStorage.getItem('aequidrape_profile') || 'null'),
   cart: JSON.parse(localStorage.getItem('aequidrape_cart') || '[]'),
-  modifications: JSON.parse(localStorage.getItem('aequidrape_mods') || '{}'), // RESTORED
+  modifications: JSON.parse(localStorage.getItem('aequidrape_mods') || '{}'),
   products: [],
   garmentId: null,
   current: null,
@@ -12,7 +12,9 @@ const STATE = {
   filters: new Set(),
   photo: { key: 'standing', src: '/demo-images/01-standing-original.jpg', custom: false, base64: null },
   garment: { base64: null, modifiedUrl: null, custom: false },
-  tryOnReady: false, // NEW: gates the compare slider so it only responds once a real result exists
+  tryOnReady: false,
+  workshopGarment: null,
+  workshopHistory: []
 };
 
 const PHOTOS = {
@@ -74,9 +76,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       pct = Math.max(0, Math.min(100, pct));
       setCmp(pct);
     };
-    // Gate: dragging only does anything once a real try-on result is showing.
-    // Without this, dragging the stage before/between generations forces the
-    // after-layer, divider and knob visible over an empty or stale image.
     const startDrag = (e) => { if (!STATE.tryOnReady) return; isDragging = true; updateSlider(e); e.preventDefault(); };
     const endDrag = () => { isDragging = false; };
     const moveDrag = (e) => { if (!isDragging || !STATE.tryOnReady) return; updateSlider(e); e.preventDefault(); };
@@ -281,7 +280,6 @@ function renderGarmentList() {
 
 function selectGarment(id, btn) {
   STATE.garmentId = id;
-  // CRITICAL FIX: Load modifiedUrl from STATE.modifications if it exists
   STATE.garment = { base64: null, modifiedUrl: STATE.modifications[id]?.url || null, custom: false };
   
   document.querySelectorAll('.garment-opt').forEach(b => b.classList.remove('active'));
@@ -343,7 +341,6 @@ async function runModification() {
     });
     const data = await res.json();
     if (data.url) {
-      // CRITICAL FIX: Save modification mapped to this specific garment ID
       if (STATE.garmentId) {
         STATE.modifications[STATE.garmentId] = { prompt, url: data.url };
         localStorage.setItem('aequidrape_mods', JSON.stringify(STATE.modifications));
@@ -415,6 +412,7 @@ function setCmp(v) {
     range.hidden = false;
   }
 }
+
 async function runTryOn() {
   const status = document.getElementById('studio-status');
   if (STATE.photo.custom && !document.getElementById('consent').checked) {
@@ -439,9 +437,6 @@ async function runTryOn() {
     const data = await res.json();
     if (data.url) {
       const afterImg = document.getElementById('stage-after');
-      // Wait for the new render to actually load before revealing the
-      // compare slider — otherwise a drag can land on a half-loaded /
-      // still-previous image and the split looks broken.
       await new Promise((resolve) => {
         afterImg.onload = resolve;
         afterImg.onerror = resolve;
@@ -531,6 +526,7 @@ function renderProducts(containerId = 'products', list = null) {
         <div class="cart-actions">
           <button class="quick ${inCart ? 'hidden' : ''}" onclick="event.stopPropagation(); addToCart('${g.id}')">Add to bag</button>
           <button class="quick remove ${!inCart ? 'hidden' : ''}" onclick="event.stopPropagation(); removeFromBag('${g.id}')">Remove</button>
+          <button class="quick modify" onclick="event.stopPropagation(); openWorkshop('${g.id}')">Modify</button>
         </div>
       </div>
       <div class="p-body">
@@ -610,17 +606,106 @@ function showProduct(id) {
 }
 
 function quickModify(garmentId, prompt) {
-  if (!STATE.cart.includes(garmentId)) addToCart(garmentId);
-  STATE.garmentId = garmentId;
-  STATE.current = catalog().find(p => p.id === garmentId);
-  
+  openWorkshop(garmentId);
   setTimeout(() => {
-    const promptInput = document.getElementById('modify-prompt');
-    if (promptInput) promptInput.value = prompt;
-    document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
-  }, 100);
+    const promptInput = document.getElementById('ws-prompt');
+    if (promptInput) {
+      promptInput.value = prompt;
+      runWorkshopMod();
+    }
+  }, 200);
+}
+
+/* ---------- NEW: WORKSHOP LOGIC ---------- */
+function openWorkshop(garmentId) {
+  if (!STATE.cart.includes(garmentId)) addToCart(garmentId);
+  STATE.workshopGarment = catalog().find(p => p.id === garmentId);
+  STATE.workshopHistory = [];
   
-  navigateTo('home');
+  document.getElementById('ws-original').src = '/' + STATE.workshopGarment.image_path;
+  document.getElementById('ws-current').src = '/' + STATE.workshopGarment.image_path;
+  document.getElementById('ws-chat-body').innerHTML = '<div class="chat-msg system">Select this garment to see how it can be adapted. Type a modification below.</div>';
+  document.getElementById('ws-email-output').hidden = true;
+  
+  navigateTo('workshop');
+}
+
+async function runWorkshopMod() {
+  const prompt = document.getElementById('ws-prompt').value.trim();
+  const status = document.getElementById('ws-status');
+  if (!prompt) { status.textContent = 'Describe a modification first.'; return; }
+  
+  const currentImg = document.getElementById('ws-current').src;
+  const base64 = await toBase64(currentImg);
+  
+  status.textContent = 'Applying modification...';
+  const chatBody = document.getElementById('ws-chat-body');
+  
+  const userMsg = document.createElement('div');
+  userMsg.className = 'chat-msg user';
+  userMsg.textContent = prompt;
+  chatBody.appendChild(userMsg);
+  chatBody.scrollTop = chatBody.scrollHeight;
+  
+  document.getElementById('ws-prompt').value = '';
+  
+  try {
+    const res = await fetch('/api/modify-image', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_base64: base64, prompt }),
+    });
+    const data = await res.json();
+    if (data.url) {
+      STATE.workshopHistory.push({ prompt, imageUrl: data.url });
+      document.getElementById('ws-current').src = data.url;
+      
+      // Sync to global modifications so main studio try-on uses the latest
+      if (STATE.workshopGarment) {
+        STATE.modifications[STATE.workshopGarment.id] = { prompt, url: data.url };
+        localStorage.setItem('aequidrape_mods', JSON.stringify(STATE.modifications));
+      }
+      
+      const aiMsg = document.createElement('div');
+      aiMsg.className = 'chat-msg ai';
+      aiMsg.innerHTML = '<strong>Adaptation Applied:</strong> ' + prompt + '<br/><img src="' + data.url + '" alt="Modified" />';
+      chatBody.appendChild(aiMsg);
+      chatBody.scrollTop = chatBody.scrollHeight;
+      
+      status.textContent = 'Ready for next modification.';
+    } else {
+      status.textContent = 'Modification failed: ' + (data.error || 'unknown error');
+    }
+  } catch (e) {
+    status.textContent = 'Modification failed: ' + e.message;
+  }
+}
+
+async function generateEmail() {
+  const status = document.getElementById('ws-status');
+  if (STATE.workshopHistory.length === 0) { status.textContent = 'Make at least one modification first.'; return; }
+  
+  status.textContent = 'Drafting intelligent email with AI...';
+  try {
+    const res = await fetch('/api/generate-email', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profile: STATE.profile || {},
+        garment: STATE.workshopGarment,
+        history: STATE.workshopHistory
+      })
+    });
+    const data = await res.json();
+    
+    if (res.ok && data.email) {
+      document.getElementById('ws-email-text').value = data.email;
+      document.getElementById('ws-email-output').hidden = false;
+      status.textContent = 'AI Email draft ready.';
+    } else {
+      status.textContent = 'AI failed: ' + (data.error || 'Unknown error. Check server logs.');
+    }
+  } catch (e) {
+    status.textContent = 'Network error: ' + e.message;
+  }
 }
 
 function tryOnThis() {

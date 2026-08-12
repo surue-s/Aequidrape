@@ -394,13 +394,13 @@
 
             <div class="detail-actions">
               <button class="btn-ghost-pill" onclick="navigateTo('shop')">Back to shop</button>
-              <button class="btn-dark">Add to bag
-                <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+              <button class="btn-dark" onclick="openWorkshop(STATE.current.id)">
+                Modify & Adapt
+                <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span>
               </button>
             </div>
-            <div class="detail-actions">
+            <div class="detail-actions" style="margin-top: 8px;">
                <button id="add-to-cart-btn" class="btn-line">Add to try-on bag</button>
-                <button class="btn-dark" onclick="tryOnThis()">Try on now</button>
             </div>
 
             <div class="tabs-bar" role="tablist">
@@ -420,6 +420,54 @@
       </div>
     </section>
   </main>
+
+      <!-- WORKSHOP -->
+    <section id="workshop-page" class="page">
+      <div class="container">
+        <div class="workshop-head">
+          <button class="btn-ghost-pill" onclick="navigateTo('shop')">← Back to Shop</button>
+          <h1 class="h-section">Adaptation Workshop</h1>
+          <button class="btn-dark" onclick="navigateTo('home'); setTimeout(function(){ document.getElementById('studio')?.scrollIntoView({behavior:'smooth'}); }, 50)">
+            Try it on
+            <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span>
+          </button>
+        </div>
+        
+        <div class="workshop-grid">
+          <!-- Left: Visuals -->
+          <div class="workshop-visuals">
+            <div class="vis-card">
+              <h3>Original Garment</h3>
+              <img id="ws-original" src="" alt="Original" />
+            </div>
+            <div class="vis-card">
+              <h3>Current Adaptation</h3>
+              <img id="ws-current" src="" alt="Current" />
+            </div>
+            <div class="ws-actions">
+               <div class="ai-input-wrapper">
+                 <input type="text" id="ws-prompt" placeholder="e.g. replace buttons with magnets" />
+                 <button onclick="runWorkshopMod()">Apply Change</button>
+               </div>
+               <p class="studio-status" id="ws-status"></p>
+            </div>
+          </div>
+
+          <!-- Right: Chat/History -->
+          <div class="workshop-chat">
+            <div class="chat-header">
+              <h3>Modification Log</h3>
+              <button class="btn-ghost-pill" onclick="generateEmail()">Draft Seller Email</button>
+            </div>
+            <div class="chat-body" id="ws-chat-body"></div>
+            <div class="chat-email" id="ws-email-output" hidden>
+               <h4>Advocate Email Draft</h4>
+               <textarea id="ws-email-text" readonly></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
   <footer>
     <div class="container">

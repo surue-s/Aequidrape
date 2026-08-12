@@ -70,32 +70,96 @@ app.post('/api/try-on', async (req, res) => {
     }
 
     const out: any = await runClothesVTO(personBuffer, garmentBuffer, garment_url);
-
-    // Log the raw shape once so you can confirm the real key name coming
-    // back from youcam.ts, then trim/remove this once confirmed.
     console.log('[try-on] raw result from runClothesVTO:', out);
 
-    // runClothesVTO's return shape isn't guaranteed to be { url }. Normalize
-    // it here so the client always gets a top-level `url`, the same way
-    // /api/modify-image already does for modifyGarmentImage's result.
     const url =
-      out?.url ??
-      out?.resultUrl ??
-      out?.result_url ??
-      out?.imageUrl ??
-      out?.image_url ??
-      out?.output_url ??
-      out?.data?.url ??
-      null;
+      out?.url ?? out?.resultUrl ?? out?.result_url ?? out?.imageUrl ??
+      out?.image_url ?? out?.output_url ?? out?.data?.url ?? null;
 
     if (!url) {
       console.error('[try-on] no recognizable url field in result:', out);
       return res.status(502).json({ error: 'Try-on succeeded but returned no image URL', raw: out });
     }
-
     res.json({ status: out?.status ?? 'success', url });
   } catch (e: any) {
     console.error('[try-on] error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/generate-email', async (req, res) => {
+  const profile = req.body.profile || {};
+  const garment = req.body.garment || {};
+  const history = req.body.history || [];
+  const OR_KEY = process.env.OPENROUTER_API_KEY;
+
+  if (!OR_KEY || OR_KEY === 'sk-or-v1-your-key-here') {
+    return res.status(400).json({ error: 'Missing valid OPENROUTER_API_KEY in .env' });
+  }
+
+  const modsList = history.map((h: any, i: number) => `${i + 1}. ${h.prompt}`).join('\n');
+  
+  const systemPrompt = `You are an expert adaptive fashion advocate and accessibility consultant. Your task is to draft a polite, professional, and highly effective inquiry email to a clothing brand on behalf of a disabled shopper.
+The shopper has specific physical needs and has used our platform to identify necessary modifications to a specific garment.
+Your goal is to clearly communicate the shopper's needs without oversharing private medical details, explain *why* the modifications are necessary based on their profile (e.g., 'due to limited dexterity', 'for seated comfort'), and ask if the brand can accommodate these custom alterations or offer similar adaptive alternatives.
+Tone: Professional, respectful, empowering, and clear.
+Format: Output ONLY the email Subject line (starting with "Subject: ") and the Email Body. Do not include any introductory or concluding remarks outside the email itself.`;
+
+  const userPrompt = `Shopper Profile:
+- Posture: ${profile.posture || 'Not specified'}
+- Dexterity: ${profile.dexterity || 'Not specified'}
+- Sensory Needs: ${(profile.sensory || []).join(', ') || 'None'}
+- Mobility Aids: ${(profile.mobility_aids || []).join(', ') || 'None'}
+- Additional Context: ${profile.dex_notes || profile.aid_other || 'None'}
+
+Garment Details:
+- Name: ${garment.name || 'Garment'}
+- Current Closure: ${garment.closure_type || 'Standard'}
+- Fabric/Stretch: ${garment.fabric || 'Standard'}, ${garment.stretch || 'Standard'}
+
+Requested Modifications (from Workshop History):
+${modsList || 'No specific modifications logged.'}
+
+Draft the email now.`;
+
+  try {
+    const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + OR_KEY,
+        'HTTP-Referer': 'http://localhost:3000',
+        'X-Title': 'Aequidrape'
+      },
+      body: JSON.stringify({
+        model: 'cohere/north-mini-code:free',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]
+      })
+    });
+
+    if (!orRes.ok) {
+      const errText = await orRes.text();
+      console.error('[email] OpenRouter API error:', orRes.status, errText);
+      return res.status(500).json({ error: 'OpenRouter API failed: ' + orRes.status });
+    }
+
+    const data = await orRes.json();
+    if (data.error) {
+      console.error('[email] OpenRouter error object:', data.error);
+      return res.status(500).json({ error: data.error.message || 'AI generation failed' });
+    }
+
+    const emailText = data?.choices?.[0]?.message?.content;
+    if (!emailText) {
+      return res.status(500).json({ error: 'AI returned empty response' });
+    }
+
+    res.json({ email: emailText.trim() });
+  } catch (e: any) {
+    console.error('[email] Network error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
