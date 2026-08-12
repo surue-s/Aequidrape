@@ -31,30 +31,25 @@ const DEX_LABELS = ['Full use of both hands', 'Limited grip or strength', 'One h
 function getComfortInsights(profile, garment) {
   const insights = [];
   const prompts = [];
+
+
   if (!profile || !garment) return { insights, prompts };
 
-  if (profile.dexterity === 'limited' || profile.dexterity === 'one_handed') {
-    if (garment.closure_type?.includes('button')) {
-      insights.push('Standard buttons require fine motor skills.');
-      prompts.push('replace buttons with magnetic closures');
-    }
-  }
-  
-  if (profile.posture === 'seated' || profile.mobility_aids?.includes('prosthetic-leg')) {
-    if (garment.stretch === 'slight' || garment.stretch === 'none') {
-      insights.push('Low-stretch fabric may restrict movement while seated or around prosthetics.');
-      prompts.push('add 4-way stretch panels or side zippers');
-    }
-    if (garment.back_rise !== 'high') {
-      insights.push('Standard back rise may expose the lower back when seated.');
-      prompts.push('add a drop-tail back or high-rise waistband');
-    }
-  }
-  
-  if (profile.sensory?.includes('tag-free')) {
-    insights.push('Neck tags will cause sensory irritation.');
-    prompts.push('remove all tags and print care instructions on fabric');
-  }
+ // Add to getComfortInsights function
+if (profile.posture === 'seated') {
+  insights.push('Seated posture requires 15-20mm additional ease at hip and chest to prevent pressure points.');
+  prompts.push('add 15mm wearing ease at hip and chest areas');
+}
+
+if (profile.mobility_aids?.includes('prosthetic-leg')) {
+  insights.push('Prosthetic accommodation requires asymmetric ease distribution around the residual limb.');
+  prompts.push('add asymmetric ease panels around prosthetic area');
+}
+
+if (profile.sensory?.includes('soft-fabric')) {
+  insights.push('Sensory needs require zero-pressure contact at fit points (shoulders, underarms).');
+  prompts.push('add flat-lock seams and remove all pressure points at contact areas');
+}
   
   return { insights, prompts };
 }
@@ -420,7 +415,15 @@ async function runTryOn() {
   }
   if (!STATE.garmentId && !STATE.garment.custom) { status.textContent = 'Pick or upload a garment first.'; return; }
 
-  status.textContent = 'Contacting YouCam...';
+    const isAdaptiveProfile = STATE.profile && (
+    STATE.profile.posture === 'seated' || 
+    (STATE.profile.mobility_aids && STATE.profile.mobility_aids.length > 0) || 
+    STATE.profile.dexterity !== 'standard'
+  );
+
+  status.textContent = isAdaptiveProfile 
+    ? 'Applying adaptive drape (AI fit may vary for prosthetics & seated postures)...' 
+    : 'Contacting YouCam...';
   const personBase64 = STATE.photo.base64 || await toBase64(STATE.photo.src);
   const payload = { person_base64: personBase64 };
   
@@ -445,7 +448,7 @@ async function runTryOn() {
       ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = false; });
       STATE.tryOnReady = true;
       setCmp(50);
-      status.textContent = data.status === 'cached' ? 'Cached render ready. Drag to compare.' : 'Real render ready. Drag to compare.';
+      status.textContent = data.status === 'cached' ? 'Cached render ready. Drag to compare.' : ' Render ready. Drag to compare. (AI fit may vary for prosthetics & seated postures due to current model limitations) ';
     } else {
       status.textContent = 'Try-on failed: ' + (data.error || 'unknown error');
     }
@@ -631,6 +634,8 @@ function openWorkshop(garmentId) {
 }
 
 async function runWorkshopMod() {
+  const easePurpose = document.getElementById('ws-ease-purpose').value;
+  const fullPrompt = prompt + ' (wearing purpose: ' + easePurpose + ')';  
   const prompt = document.getElementById('ws-prompt').value.trim();
   const status = document.getElementById('ws-status');
   if (!prompt) { status.textContent = 'Describe a modification first.'; return; }
