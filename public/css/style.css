@@ -703,13 +703,28 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; }
   gap: 32px;
   margin-top: 16px;
 }
+
+/* NEW: Side-by-side grid for visual cards */
+.workshop-visuals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-content: start;
+}
 .workshop-visuals .vis-card {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--r-m); padding: 16px; margin-bottom: 16px;
+  border-radius: var(--r-m); padding: 16px; margin-bottom: 0;
 }
 .workshop-visuals h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.05em; }
 .workshop-visuals img { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--bg-soft); border-radius: var(--r-s); }
-.ws-actions { margin-top: 16px; }
+
+/* Span full width below the cards */
+.workshop-visuals .ease-selector,
+.workshop-visuals .ai-input-wrapper,
+.workshop-visuals .studio-status {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+}
 
 /* Workshop Chat */
 .workshop-chat {
@@ -753,12 +768,76 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; }
   resize: vertical; color: var(--ink);
 }
 
-/* Shop Cart Actions (Add Modify Button) */
-.p-media .cart-actions .quick.modify {
-  background: var(--accent); flex-basis: 100%; margin-top: 4px;
-}
-
 @media (max-width: 1024px) {
   .workshop-grid { grid-template-columns: 1fr; }
   .workshop-chat { height: 500px; }
+  /* Stack cards vertically on mobile */
+  .workshop-visuals { grid-template-columns: 1fr; }
+}
+
+/* Pressure Zones */
+.pressure-panel {
+  margin-top: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  padding: 24px;
+}
+.pressure-zone {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.pressure-zone:last-child { border-bottom: none; }
+.pressure-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.pressure-dot.high { background: var(--risk); }
+.pressure-dot.medium { background: var(--warn); }
+.pressure-dot.low { background: var(--ok); }
+.pressure-zone .zone-info h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.pressure-zone .zone-info p { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+
+/* Voice Input Button */
+.mic-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--t-fast) var(--ease);
+  flex-shrink: 0;
+  color: var(--ink-2);
+}
+.mic-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.mic-btn.listening {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  animation: micPulse 1.5s infinite;
+}
+@keyframes micPulse {
+  0% { box-shadow: 0 0 0 0 rgba(201, 122, 60, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(201, 122, 60, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(201, 122, 60, 0); }
+}
+
+/* Adjust input wrapper to accommodate mic button */
+.ai-input-wrapper {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }

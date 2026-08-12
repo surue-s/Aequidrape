@@ -47,6 +47,7 @@
       <nav class="nav-main" aria-label="Primary">
         <a href="#studio" onclick="navigateTo('home'); setTimeout(()=>document.getElementById('studio')?.scrollIntoView(),50)">Studio</a>
         <a href="#shop" onclick="navigateTo('shop')">Shop</a>
+        <a href="#workshop" onclick="navigateToWorkshop()">Workshop</a>
         <a href="#profile" onclick="navigateTo('profile')">Fit Profile</a>
       </nav>
       <div class="head-actions">
@@ -166,6 +167,9 @@
               <!-- ADAPT -->
               <p class="step-label" style="margin-top:24px"><b>+</b> Adapt it</p>
               <div class="ai-input-wrapper">
+                <button class="mic-btn" id="studio-mic-btn" onclick="toggleVoiceInput('modify-prompt', 'studio-mic-btn')" aria-label="Voice input" title="Speak your modification">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                </button>
                 <input type="text" id="modify-prompt" placeholder="e.g. add a full zipper on the left side" />
                 <button onclick="runModification()">Modify</button>
               </div>
@@ -421,7 +425,7 @@
     </section>
   </main>
 
-      <!-- WORKSHOP -->
+    <!-- WORKSHOP -->
     <section id="workshop-page" class="page">
       <div class="container">
         <div class="workshop-head">
@@ -444,7 +448,8 @@
               <h3>Current Adaptation</h3>
               <img id="ws-current" src="" alt="Current" />
             </div>
-            <div class="ease-selector" style="margin-top: 12px;">
+            
+            <div class="ease-selector">
               <label style="font-size: 12px; font-weight: 600; color: var(--ink-2);">Wearing purpose:</label>
               <select id="ws-ease-purpose" style="border:1px solid var(--line-strong); border-radius:var(--r-pill); padding:6px 12px; font-size:12px; background:var(--surface);">
                 <option value="basic">Basic fitting</option>
@@ -454,13 +459,14 @@
               </select>
             </div>
 
-               <div class="ai-input-wrapper">
-                 <input type="text" id="ws-prompt" placeholder="e.g. replace buttons with magnets" />
-                 <button onclick="runWorkshopMod()">Apply Change</button>
-               </div>
-               <p class="studio-status" id="ws-status"></p>
+            <div class="ai-input-wrapper">
+              <button class="mic-btn" id="ws-mic-btn" onclick="toggleVoiceInput('ws-prompt', 'ws-mic-btn')" aria-label="Voice input" title="Speak your modification">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+              </button>
+              <input type="text" id="ws-prompt" placeholder="e.g. replace buttons with magnets" />
+              <button onclick="runWorkshopMod()">Apply Change</button>
             </div>
-          </div>
+            <p class="studio-status" id="ws-status"></p>
 
           <!-- Right: Chat/History -->
           <div class="workshop-chat">
@@ -478,6 +484,7 @@
       </div>
     </section>
 
+    
   <footer>
     <div class="container">
       <p class="foot-word">aequidrape<span>.</span></p>

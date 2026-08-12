@@ -5,6 +5,7 @@ const STATE = {
   profile: JSON.parse(localStorage.getItem('aequidrape_profile') || 'null'),
   cart: JSON.parse(localStorage.getItem('aequidrape_cart') || '[]'),
   modifications: JSON.parse(localStorage.getItem('aequidrape_mods') || '{}'),
+  customPhotos: {}, 
   products: [],
   garmentId: null,
   current: null,
@@ -14,7 +15,10 @@ const STATE = {
   garment: { base64: null, modifiedUrl: null, custom: false },
   tryOnReady: false,
   workshopGarment: null,
-  workshopHistory: []
+  workshopHistory: [],
+  workshopState: JSON.parse(localStorage.getItem('aequidrape_workshop') || '{"garmentId": null, "history": [], "currentImageUrl": null}'),
+  isListening: false,
+  recognition: null
 };
 
 const PHOTOS = {
@@ -27,35 +31,239 @@ const PHOTOS = {
 const DEX_MAP = ['standard', 'limited', 'one_handed'];
 const DEX_LABELS = ['Full use of both hands', 'Limited grip or strength', 'One hand available'];
 
+/* ---------- Pressure Zone Rules ---------- */
+function getPressureZones(profile, garment) {
+  const zones = [];
+  if (!profile || !garment) return zones;
+
+  if (profile.posture === 'seated') {
+    zones.push({
+      location: 'Chest / Upper Hip',
+      severity: garment.stretch === 'slight' ? 'high' : 'medium',
+      reason: 'Seated posture increases pressure at chest and hip. ' +
+        (garment.stretch === 'slight' ? 'Low-stretch fabric (' + (garment.fabric || 'standard') + ') amplifies restriction.' : 'Moderate stretch partially accommodates.')
+    });
+    zones.push({
+      location: 'Lower Back',
+      severity: garment.back_rise !== 'high' ? 'high' : 'low',
+      reason: garment.back_rise !== 'high'
+        ? 'Standard back rise may gap or expose lower back when seated.'
+        : 'High back rise provides seated coverage.'
+    });
+    zones.push({
+      location: 'Knees / Lap',
+      severity: 'medium',
+      reason: 'Seated posture creates sustained pressure at knee and lap areas. Check seam placement.'
+    });
+  }
+
+  if (profile.mobility_aids && profile.mobility_aids.includes('prosthetic-leg')) {
+    zones.push({
+      location: 'Prosthetic Interface',
+      severity: garment.stretch === 'slight' ? 'high' : 'medium',
+      reason: 'Prosthetic socket requires asymmetric ease. ' +
+        (garment.stretch === 'slight' ? 'Low-stretch fabric may restrict donning/doffing.' : 'Stretch allows accommodation.')
+    });
+  }
+  if (profile.mobility_aids && profile.mobility_aids.includes('prosthetic-arm')) {
+    zones.push({
+      location: 'Shoulder / Armhole',
+      severity: 'medium',
+      reason: 'Prosthetic arm may require wider armhole or adaptive closure at shoulder.'
+    });
+  }
+
+  if (profile.sensory && profile.sensory.includes('tag-free')) {
+    zones.push({
+      location: 'Neckline / Tags',
+      severity: 'high',
+      reason: 'Sensory sensitivity at neckline. Tags must be removed or printed.'
+    });
+  }
+  if (profile.sensory && profile.sensory.includes('soft-fabric')) {
+    zones.push({
+      location: 'All Contact Points',
+      severity: /fleece|cotton/i.test(garment.fabric || '') ? 'low' : 'high',
+      reason: /fleece|cotton/i.test(garment.fabric || '')
+        ? (garment.fabric || 'Material') + ' is generally soft against skin.'
+        : (garment.fabric || 'Material') + ' may cause sensory irritation at direct contact points.'
+    });
+  }
+
+  if (profile.mobility_aids && (profile.mobility_aids.includes('manual-wheelchair') || profile.mobility_aids.includes('power-chair'))) {
+    zones.push({
+      location: 'Back / Seat Interface',
+      severity: 'high',
+      reason: 'Sustained pressure between garment and wheelchair seat. Check for bunching fabric and seam ridges.'
+    });
+    zones.push({
+      location: 'Elbows / Armrests',
+      severity: 'medium',
+      reason: 'Repeated friction at armrest contact points. Reinforced or flat seams recommended.'
+    });
+  }
+
+  if (profile.dexterity === 'limited' || profile.dexterity === 'one_handed') {
+    zones.push({
+      location: 'Closure Points',
+      severity: /button/i.test(garment.closure_type || '') ? 'high' : 'low',
+      reason: /button/i.test(garment.closure_type || '')
+        ? 'Button closures create pressure points that are difficult to manage with limited dexterity.'
+        : (garment.closure_type || 'Standard') + ' closure minimizes fine-motor pressure points.'
+    });
+  }
+
+  return zones;
+}
+
+function renderPressureZones() {
+  const g = catalog().find(function(p) { return p.id === STATE.garmentId; }) || STATE.workshopGarment || STATE.current;
+  if (!g || !STATE.profile) return;
+
+  const zones = getPressureZones(STATE.profile, g);
+  const panel = document.getElementById('pressure-panel');
+  const container = document.getElementById('pressure-zones');
+  if (!panel || !container) return;
+
+  if (zones.length === 0) {
+    panel.hidden = true;
+    return;
+  }
+
+  panel.hidden = false;
+  container.innerHTML = zones.map(function(z) {
+    return '<div class="pressure-zone">' +
+      '<span class="pressure-dot ' + z.severity + '"></span>' +
+      '<div class="zone-info">' +
+        '<h4>' + z.location + ' <small style="color:var(--ink-3); font-weight:400;">(' + z.severity + ')</small></h4>' +
+        '<p>' + z.reason + '</p>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderWorkshopHistory() {
+  var chatBody = document.getElementById('ws-chat-body');
+  if (!chatBody) return;
+  chatBody.innerHTML = '';
+  
+  if (!STATE.workshopState.history || STATE.workshopState.history.length === 0) {
+    chatBody.innerHTML = '<div class="chat-msg system">Select this garment to see how it can be adapted. Type a modification below.</div>';
+    return;
+  }
+  
+  STATE.workshopState.history.forEach(function(h) {
+    var aiMsg = document.createElement('div');
+    aiMsg.className = 'chat-msg ai';
+    aiMsg.innerHTML = '<strong>Adaptation Applied:</strong> ' + h.prompt + '<br/><img src="' + h.imageUrl + '" alt="Modified" />';
+    chatBody.appendChild(aiMsg);
+  });
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+function navigateToWorkshop() {
+  if (!STATE.workshopState.garmentId) {
+    alert('Please select a garment from the Shop or Product page to start a workshop session.');
+    navigateTo('shop');
+    return;
+  }
+  
+  var g = catalog().find(function(p) { return p.id === STATE.workshopState.garmentId; });
+  if (!g) {
+    navigateTo('shop');
+    return;
+  }
+  
+  STATE.workshopGarment = g;
+  document.getElementById('ws-original').src = '/' + g.image_path;
+  document.getElementById('ws-current').src = STATE.workshopState.currentImageUrl || ('/' + g.image_path);
+  document.getElementById('ws-email-output').hidden = true;
+  
+  renderWorkshopHistory();
+  renderPressureZones();
+  navigateTo('workshop');
+}
+
+function toggleVoiceInput(inputId, btnId) {
+  var input = document.getElementById(inputId);
+  var micBtn = document.getElementById(btnId);
+  
+  if (!input || !micBtn) return;
+  
+  var SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognitionAPI) {
+    alert('Voice input is not supported in this browser. Please use Chrome or Edge.');
+    return;
+  }
+  
+  // If already listening, stop
+  if (STATE.isListening && STATE.recognition) {
+    STATE.recognition.stop();
+    return;
+  }
+  
+  STATE.recognition = new SpeechRecognitionAPI();
+  STATE.recognition.continuous = false;
+  STATE.recognition.interimResults = false;
+  STATE.recognition.lang = 'en-US';
+  
+  STATE.recognition.onstart = function() {
+    STATE.isListening = true;
+    micBtn.classList.add('listening');
+    input.placeholder = 'Listening... speak now';
+  };
+  
+  STATE.recognition.onresult = function(event) {
+    var transcript = event.results[0][0].transcript;
+    // Append to existing text — never overwrite typed input
+    input.value = input.value ? input.value + ' ' + transcript : transcript;
+  };
+  
+  STATE.recognition.onerror = function(event) {
+    STATE.isListening = false;
+    micBtn.classList.remove('listening');
+    input.placeholder = inputId === 'ws-prompt' 
+      ? 'e.g. replace buttons with magnets' 
+      : 'e.g. add a full zipper on the left side';
+    if (event.error === 'not-allowed') {
+      alert('Microphone access denied. Please allow microphone permissions.');
+    }
+  };
+  
+  STATE.recognition.onend = function() {
+    STATE.isListening = false;
+    micBtn.classList.remove('listening');
+    input.placeholder = inputId === 'ws-prompt' 
+      ? 'e.g. replace buttons with magnets' 
+      : 'e.g. add a full zipper on the left side';
+  };
+  
+  STATE.recognition.start();
+}
 /* ---------- Comfort Engine ---------- */
 function getComfortInsights(profile, garment) {
   const insights = [];
   const prompts = [];
+  if (!profile || !garment) return { insights: insights, prompts: prompts };
 
-
-  if (!profile || !garment) return { insights, prompts };
-
- // Add to getComfortInsights function
-if (profile.posture === 'seated') {
-  insights.push('Seated posture requires 15-20mm additional ease at hip and chest to prevent pressure points.');
-  prompts.push('add 15mm wearing ease at hip and chest areas');
-}
-
-if (profile.mobility_aids?.includes('prosthetic-leg')) {
-  insights.push('Prosthetic accommodation requires asymmetric ease distribution around the residual limb.');
-  prompts.push('add asymmetric ease panels around prosthetic area');
-}
-
-if (profile.sensory?.includes('soft-fabric')) {
-  insights.push('Sensory needs require zero-pressure contact at fit points (shoulders, underarms).');
-  prompts.push('add flat-lock seams and remove all pressure points at contact areas');
-}
+  if (profile.posture === 'seated') {
+    insights.push('Seated posture requires 15-20mm additional ease at hip and chest to prevent pressure points.');
+    prompts.push('add 15mm wearing ease at hip and chest areas');
+  }
+  if (profile.mobility_aids && profile.mobility_aids.includes('prosthetic-leg')) {
+    insights.push('Prosthetic accommodation requires asymmetric ease distribution around the residual limb.');
+    prompts.push('add asymmetric ease panels around prosthetic area');
+  }
+  if (profile.sensory && profile.sensory.includes('soft-fabric')) {
+    insights.push('Sensory needs require zero-pressure contact at fit points (shoulders, underarms).');
+    prompts.push('add flat-lock seams and remove all pressure points at contact areas');
+  }
   
-  return { insights, prompts };
+  return { insights: insights, prompts: prompts };
 }
 
 /* ---------- boot ---------- */
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', async function() {
   if (window.AOS) AOS.init({ duration: 700, once: true, disable: matchMedia('(prefers-reduced-motion: reduce)').matches });
   updateProfileBadge();
   await loadProducts();
@@ -64,16 +272,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const stage = document.getElementById('stage');
   if (stage) {
     let isDragging = false;
-    const updateSlider = (e) => {
+    const updateSlider = function(e) {
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const rect = stage.getBoundingClientRect();
       let pct = ((clientX - rect.left) / rect.width) * 100;
       pct = Math.max(0, Math.min(100, pct));
       setCmp(pct);
     };
-    const startDrag = (e) => { if (!STATE.tryOnReady) return; isDragging = true; updateSlider(e); e.preventDefault(); };
-    const endDrag = () => { isDragging = false; };
-    const moveDrag = (e) => { if (!isDragging || !STATE.tryOnReady) return; updateSlider(e); e.preventDefault(); };
+    const startDrag = function(e) { if (!STATE.tryOnReady) return; isDragging = true; updateSlider(e); e.preventDefault(); };
+    const endDrag = function() { isDragging = false; };
+    const moveDrag = function(e) { if (!isDragging || !STATE.tryOnReady) return; updateSlider(e); e.preventDefault(); };
 
     stage.addEventListener('mousedown', startDrag);
     stage.addEventListener('touchstart', startDrag, { passive: false });
@@ -83,7 +291,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.addEventListener('touchmove', moveDrag, { passive: false });
   }
 
-  window.addEventListener('hashchange', () => navigateTo(location.hash.slice(1) || 'home'));
+  window.addEventListener('hashchange', function() { navigateTo(location.hash.slice(1) || 'home'); });
   navigateTo(location.hash.slice(1) || 'home');
 });
 
@@ -91,7 +299,7 @@ async function loadProducts() {
   try {
     const res = await fetch('/api/products');
     if (res.ok) STATE.products = await res.json();
-  } catch {}
+  } catch (e) {}
   if (!STATE.products.length) STATE.products = [
     { id: 'adaptive-jacket-001', name: 'Jacket', closure_type: 'zipper', stretch: 'moderate', back_rise: 'medium', seams: 'Standard', pocket_access: 'Side pockets', price: 140, description: 'Everyday zip jacket.', image_path: 'garments/jacket.jpg' },
   ];
@@ -99,11 +307,11 @@ async function loadProducts() {
 }
 
 function catalog() { return STATE.products; }
-function priceOf(g) { return g.price ?? 0; }
+function priceOf(g) { return g.price ? g.price : 0; }
 
 /* ---------- cart ---------- */
 function addToCart(id) {
-  if (!STATE.cart.includes(id)) {
+  if (STATE.cart.indexOf(id) === -1) {
     STATE.cart.push(id);
     localStorage.setItem('aequidrape_cart', JSON.stringify(STATE.cart));
     updateCartUI();
@@ -111,7 +319,7 @@ function addToCart(id) {
 }
 
 function removeFromBag(id) {
-  STATE.cart = STATE.cart.filter(cId => cId !== id);
+  STATE.cart = STATE.cart.filter(function(cId) { return cId !== id; });
   if (STATE.garmentId === id) {
     STATE.garmentId = null;
     resetStage();
@@ -129,8 +337,8 @@ function updateCartUI() {
   renderGarmentList();
   const cartBtn = document.getElementById('add-to-cart-btn');
   if (cartBtn && STATE.current) {
-    cartBtn.textContent = STATE.cart.includes(STATE.current.id) ? 'In bag' : 'Add to try-on bag';
-    cartBtn.disabled = STATE.cart.includes(STATE.current.id);
+    cartBtn.textContent = STATE.cart.indexOf(STATE.current.id) !== -1 ? 'In bag' : 'Add to try-on bag';
+    cartBtn.disabled = STATE.cart.indexOf(STATE.current.id) !== -1;
   }
 }
 
@@ -138,7 +346,7 @@ function updateCartUI() {
 function navigateTo(page) {
   let el = document.getElementById(page + '-page');
   if (!el) { page = 'home'; el = document.getElementById('home-page'); }
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
   el.classList.add('active');
   STATE.page = page;
   history.replaceState(null, '', '#' + page);
@@ -160,26 +368,27 @@ function updateProfileBadge() {
   if (STATE.profile) {
     const p = { seated: 'Seated', standing: 'Standing', mixed: 'Mixed' }[STATE.profile.posture] || 'Set';
     const d = { standard: 'Full use', limited: 'Limited', one_handed: '1-hand' }[STATE.profile.dexterity] || '';
-    text.textContent = p + ' · ' + d;
+    text.textContent = p + ' | ' + d;
     badge.classList.add('set');
   } else { text.textContent = 'Set profile'; badge.classList.remove('set'); }
 }
 
 function saveProfile() {
   const f = document.getElementById('profile-form');
-  const posture = f.querySelector('input[name="posture"]:checked')?.value;
-  if (!posture) { document.getElementById('profile-status').textContent = 'Choose a posture to continue.'; return; }
+  const postureEl = f.querySelector('input[name="posture"]:checked');
+  if (!postureEl) { document.getElementById('profile-status').textContent = 'Choose a posture to continue.'; return; }
   STATE.profile = {
-    posture,
+    posture: postureEl.value,
     dexterity: DEX_MAP[+document.getElementById('dex-range').value],
     dex_notes: document.getElementById('dex-notes').value.trim(),
-    sensory: [...f.querySelectorAll('input[name="sensory"]:checked')].map(i => i.value),
-    mobility_aids: [...f.querySelectorAll('input[name="mobility_aids"]:checked')].map(i => i.value),
+    sensory: Array.from(f.querySelectorAll('input[name="sensory"]:checked')).map(function(i) { return i.value; }),
+    mobility_aids: Array.from(f.querySelectorAll('input[name="mobility_aids"]:checked')).map(function(i) { return i.value; }),
     aid_other: document.getElementById('aid-other').value.trim(),
-    fit_concerns: [...f.querySelectorAll('input[name="fit_concerns"]:checked')].map(i => i.value),
+    fit_concerns: Array.from(f.querySelectorAll('input[name="fit_concerns"]:checked')).map(function(i) { return i.value; }),
   };
   localStorage.setItem('aequidrape_profile', JSON.stringify(STATE.profile));
   updateProfileBadge();
+  renderPressureZones(); // Update zones when profile changes
   navigateTo('shop');
 }
 
@@ -190,27 +399,40 @@ function applyNeed(kind) {
   if (kind === 'sensory') STATE.profile.sensory = ['tag-free'];
   if (kind === 'prosthetic') STATE.profile.mobility_aids = ['prosthetic-leg'];
   updateProfileBadge();
+  renderPressureZones(); // Update zones when profile changes
   navigateTo('shop');
 }
 
 /* ---------- studio: photo ---------- */
 function selectPhoto(key, btn) {
-  STATE.photo = { key, src: PHOTOS[key], custom: false, base64: null };
-  document.querySelectorAll('.thumb-btn').forEach(b => b.classList.remove('active'));
+  // Remove active class from all buttons in the rail
+  document.querySelectorAll('.photo-rail .thumb-btn').forEach(function(b) { 
+    b.classList.remove('active'); 
+  });
   btn.classList.add('active');
-  document.getElementById('stage-before').src = PHOTOS[key];
-  document.getElementById('consent-row').hidden = true;
+
+  // Check if it's a custom uploaded photo or a pre-loaded one
+  if (STATE.customPhotos && STATE.customPhotos[key]) {
+    STATE.photo = { key: key, src: STATE.customPhotos[key], custom: true, base64: STATE.customPhotos[key] };
+    document.getElementById('stage-before').src = STATE.customPhotos[key];
+    document.getElementById('consent-row').hidden = false;
+  } else if (PHOTOS[key]) {
+    STATE.photo = { key: key, src: PHOTOS[key], custom: false, base64: null };
+    document.getElementById('stage-before').src = PHOTOS[key];
+    document.getElementById('consent-row').hidden = true;
+  }
+  
   resetStage();
 }
-
 function uploadPhoto() { document.getElementById('photo-upload').click(); }
 
-async function resizeAndCompress(file, maxSize = 1024) {
-  return new Promise((resolve) => {
+async function resizeAndCompress(file, maxSize) {
+  maxSize = maxSize || 1024;
+  return new Promise(function(resolve) {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = function(e) {
       const img = new Image();
-      img.onload = () => {
+      img.onload = function() {
         let w = img.width;
         let h = img.height;
         if (w > maxSize || h > maxSize) {
@@ -233,13 +455,42 @@ async function resizeAndCompress(file, maxSize = 1024) {
 function onPhotoFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
-  resizeAndCompress(file).then(base64 => {
-    STATE.photo = { key: 'custom', src: base64, custom: true, base64: base64 };
-    document.querySelectorAll('.thumb-btn').forEach(b => b.classList.remove('active'));
-    input.closest('.thumb-col').querySelector('.upload').classList.add('active');
+  
+  resizeAndCompress(file).then(function(base64) {
+    const customKey = 'custom_' + Date.now();
+    
+    // 1. Save to state
+    if (!STATE.customPhotos) STATE.customPhotos = {};
+    STATE.customPhotos[customKey] = base64;
+    STATE.photo = { key: customKey, src: base64, custom: true, base64: base64 };
+    
+    // 2. Update the "Original" side of the slider stage
     document.getElementById('stage-before').src = base64;
     document.getElementById('consent-row').hidden = false;
     resetStage();
+
+    // 3. Inject new thumbnail into the photo rail
+    const rail = document.querySelector('.photo-rail');
+    const uploadBtn = rail.querySelector('.thumb-btn.upload');
+    
+    // Clear active states
+    rail.querySelectorAll('.thumb-btn').forEach(function(b) { 
+      b.classList.remove('active'); 
+    });
+
+    // Create the new button
+    const newBtn = document.createElement('button');
+    newBtn.className = 'thumb-btn active';
+    newBtn.innerHTML = '<img src="' + base64 + '" alt="Your upload" />';
+    newBtn.onclick = function() {
+      selectPhoto(customKey, newBtn);
+    };
+    
+    // Insert it right before the "Yours" upload button
+    rail.insertBefore(newBtn, uploadBtn);
+    
+    // Reset file input so the user can upload the same file again if needed
+    input.value = '';
   });
 }
 
@@ -248,56 +499,49 @@ function renderGarmentList() {
   const list = document.getElementById('garment-list');
   if (!list) return;
   
-  const cartItems = catalog().filter(g => STATE.cart.includes(g.id));
+  const cartItems = catalog().filter(function(g) { return STATE.cart.indexOf(g.id) !== -1; });
   if (cartItems.length === 0) {
     list.innerHTML = '<p style="color:var(--ink-2); padding: 12px 0; font-size: 0.95rem; text-align: center;">Your try-on bag is empty.<br/>Add garments from the shop to try them on.</p>';
     return;
   }
   
-  list.innerHTML = cartItems.map(g => {
+  list.innerHTML = cartItems.map(function(g) {
     const isModified = STATE.modifications[g.id];
     const isActive = STATE.garmentId === g.id;
-    return `
-      <div class="garment-opt-wrap" style="display:flex; gap:8px; align-items:center;">
-        <button class="garment-opt ${isActive ? 'active' : ''}" onclick="selectGarment('${g.id}', this)" style="flex:1;">
-          <span>
-            <strong>${g.name} ${isModified ? '<small style="color:var(--accent); font-weight:600;">(Modified)</small>' : ''}</strong>
-            <small>${g.closure_type}</small>
-          </span>
-          <span class="price">$${priceOf(g)}</span>
-        </button>
-        <button class="remove-btn" onclick="event.stopPropagation(); removeFromBag('${g.id}')" aria-label="Remove from bag">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
-      </div>`;
+    return '<div class="garment-opt-wrap" style="display:flex; gap:8px; align-items:center;">' +
+      '<button class="garment-opt ' + (isActive ? 'active' : '') + '" onclick="selectGarment(\'' + g.id + '\', this)" style="flex:1;">' +
+      '<span><strong>' + g.name + ' ' + (isModified ? '<small style="color:var(--accent); font-weight:600;">(Modified)</small>' : '') + '</strong><small>' + g.closure_type + '</small></span>' +
+      '<span class="price">$' + priceOf(g) + '</span></button>' +
+      '<button class="remove-btn" onclick="event.stopPropagation(); removeFromBag(\'' + g.id + '\')" aria-label="Remove from bag"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>';
   }).join('');
 }
 
 function selectGarment(id, btn) {
   STATE.garmentId = id;
-  STATE.garment = { base64: null, modifiedUrl: STATE.modifications[id]?.url || null, custom: false };
+  STATE.garment = { base64: null, modifiedUrl: STATE.modifications[id] ? STATE.modifications[id].url : null, custom: false };
   
-  document.querySelectorAll('.garment-opt').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.garment-opt').forEach(function(b) { b.classList.remove('active'); });
   if (btn) btn.classList.add('active');
   
   const prev = document.getElementById('garment-preview');
   if (STATE.garment.modifiedUrl) {
     prev.hidden = false;
     document.getElementById('garment-preview-img').src = STATE.garment.modifiedUrl;
-    document.getElementById('garment-preview-label').textContent = 'Modified: ' + (STATE.modifications[id]?.prompt || '');
+    document.getElementById('garment-preview-label').textContent = 'Modified: ' + (STATE.modifications[id] ? STATE.modifications[id].prompt : '');
   } else {
     prev.hidden = true;
   }
   document.getElementById('modify-status').textContent = '';
+  renderPressureZones(); // Update zones when garment changes
 }
 
 function onGarmentFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
-  resizeAndCompress(file).then(base64 => {
+  resizeAndCompress(file).then(function(base64) {
     STATE.garmentId = null;
     STATE.garment = { base64: base64, modifiedUrl: null, custom: true };
-    document.querySelectorAll('.garment-opt').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.garment-opt').forEach(function(b) { b.classList.remove('active'); });
     const prev = document.getElementById('garment-preview');
     prev.hidden = false;
     document.getElementById('garment-preview-img').src = base64;
@@ -308,42 +552,46 @@ function onGarmentFile(input) {
 async function toBase64(url) {
   const res = await fetch(url);
   const blob = await res.blob();
-  return new Promise((resolve) => {
+  return new Promise(function(resolve) {
     const fr = new FileReader();
-    fr.onload = () => resolve(fr.result);
+    fr.onload = function() { resolve(fr.result); };
     fr.readAsDataURL(blob);
   });
 }
 
 async function currentGarmentBase64() {
   if (STATE.garment.base64) return STATE.garment.base64;
-  const g = catalog().find(p => p.id === STATE.garmentId);
+  const g = catalog().find(function(p) { return p.id === STATE.garmentId; });
   if (g && g.image_path) return toBase64('/' + g.image_path);
   return null;
 }
 
 async function runModification() {
-  const prompt = document.getElementById('modify-prompt').value.trim();
-  const status = document.getElementById('modify-status');
+  var prompt = document.getElementById('modify-prompt').value.trim();
+  var status = document.getElementById('modify-status');
   if (!prompt) { status.textContent = 'Describe a modification first.'; return; }
-  const base64 = await currentGarmentBase64();
+  var base64 = await currentGarmentBase64();
   if (!base64) { status.textContent = 'Pick or upload a garment first.'; return; }
-  status.textContent = 'Modifying garment...';
+  
+  status.textContent = 'Modifying garment... Please wait.';
+  var modifyBtn = document.querySelector('.studio-panel.right .ai-input-wrapper button:last-child');
+  if (modifyBtn) { modifyBtn.disabled = true; modifyBtn.textContent = 'Working...'; }
+  
   try {
-    const res = await fetch('/api/modify-image', {
+    var res = await fetch('/api/modify-image', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_base64: base64, prompt }),
+      body: JSON.stringify({ image_base64: base64, prompt: prompt }),
     });
-    const data = await res.json();
+    var data = await res.json();
     if (data.url) {
       if (STATE.garmentId) {
-        STATE.modifications[STATE.garmentId] = { prompt, url: data.url };
+        STATE.modifications[STATE.garmentId] = { prompt: prompt, url: data.url };
         localStorage.setItem('aequidrape_mods', JSON.stringify(STATE.modifications));
         renderGarmentList();
       }
       
       STATE.garment.modifiedUrl = data.url;
-      const prev = document.getElementById('garment-preview');
+      var prev = document.getElementById('garment-preview');
       prev.hidden = false;
       document.getElementById('garment-preview-img').src = data.url;
       document.getElementById('garment-preview-label').textContent = 'Modified: ' + prompt;
@@ -353,13 +601,15 @@ async function runModification() {
     }
   } catch (e) {
     status.textContent = 'Modification failed: ' + e.message;
+  } finally {
+    if (modifyBtn) { modifyBtn.disabled = false; modifyBtn.textContent = 'Modify'; }
   }
 }
 
 /* ---------- studio: try-on ---------- */
 function resetStage() {
   STATE.tryOnReady = false;
-  ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = true; });
+  ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(function(id) { var el = document.getElementById(id); if (el) el.hidden = true; });
   document.getElementById('gauge-card').hidden = true;
   document.getElementById('studio-status').textContent = '';
 }
@@ -415,7 +665,7 @@ async function runTryOn() {
   }
   if (!STATE.garmentId && !STATE.garment.custom) { status.textContent = 'Pick or upload a garment first.'; return; }
 
-    const isAdaptiveProfile = STATE.profile && (
+  const isAdaptiveProfile = STATE.profile && (
     STATE.profile.posture === 'seated' || 
     (STATE.profile.mobility_aids && STATE.profile.mobility_aids.length > 0) || 
     STATE.profile.dexterity !== 'standard'
@@ -424,6 +674,7 @@ async function runTryOn() {
   status.textContent = isAdaptiveProfile 
     ? 'Applying adaptive drape (AI fit may vary for prosthetics & seated postures)...' 
     : 'Contacting YouCam...';
+    
   const personBase64 = STATE.photo.base64 || await toBase64(STATE.photo.src);
   const payload = { person_base64: personBase64 };
   
@@ -440,15 +691,17 @@ async function runTryOn() {
     const data = await res.json();
     if (data.url) {
       const afterImg = document.getElementById('stage-after');
-      await new Promise((resolve) => {
+      await new Promise(function(resolve) {
         afterImg.onload = resolve;
         afterImg.onerror = resolve;
-        afterImg.src = data.url + (data.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+        afterImg.src = data.url + (data.url.indexOf('?') !== -1 ? '&' : '?') + '_t=' + Date.now();
       });
-      ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = false; });
+      ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(function(id) { var el = document.getElementById(id); if (el) el.hidden = false; });
       STATE.tryOnReady = true;
       setCmp(50);
-      status.textContent = data.status === 'cached' ? 'Cached render ready. Drag to compare.' : ' Render ready. Drag to compare. (AI fit may vary for prosthetics & seated postures due to current model limitations) ';
+      status.textContent = data.status === 'cached' 
+        ? 'Cached render ready. Drag to compare.' 
+        : 'Render ready. Drag to compare. (AI fit may vary for prosthetics & seated postures due to current model limitations)';
     } else {
       status.textContent = 'Try-on failed: ' + (data.error || 'unknown error');
     }
@@ -460,7 +713,7 @@ async function runTryOn() {
 
 /* ---------- fit notes ---------- */
 async function evaluate() {
-  const g = catalog().find(p => p.id === STATE.garmentId) || STATE.current;
+  const g = catalog().find(function(p) { return p.id === STATE.garmentId; }) || STATE.current;
   if (!g) return;
   let insight = null;
   try {
@@ -469,11 +722,11 @@ async function evaluate() {
       body: JSON.stringify({ user_profile: STATE.profile || { posture: 'seated', dexterity: 'limited', sensory: [], mobility_aids: [], fit_concerns: [] }, garment_id: g.id }),
     });
     if (res.ok) { const data = await res.json(); insight = data.insight || data; }
-  } catch {}
+  } catch (e) {}
   if (!insight) insight = { compatibility: [], risks: [], questions_for_seller: [], summary: '' };
 
-  const notes = [STATE.profile?.dex_notes, STATE.profile?.aid_other].filter(Boolean).join('; ');
-  if (notes) insight.questions_for_seller = [...(insight.questions_for_seller || []), 'Can this garment accommodate: ' + notes + '?'];
+  const notes = [STATE.profile ? STATE.profile.dex_notes : '', STATE.profile ? STATE.profile.aid_other : ''].filter(Boolean).join('; ');
+  if (notes) insight.questions_for_seller = (insight.questions_for_seller || []).concat(['Can this garment accommodate: ' + notes + '?']);
 
   STATE.insight = insight;
   renderNotes(insight, g);
@@ -484,7 +737,7 @@ function fillList(id, items) {
   if (!el) return;
   const title = el.querySelector('h4');
   el.innerHTML = (title ? title.outerHTML : '') +
-    (items && items.length ? items.map(t => `<li><span>${t}</span></li>`).join('') : '<li><span>Nothing flagged.</span></li>');
+    (items && items.length ? items.map(function(t) { return '<li><span>' + t + '</span></li>'; }).join('') : '<li><span>Nothing flagged.</span></li>');
 }
 
 function renderNotes(ins, g) {
@@ -500,50 +753,41 @@ function renderNotes(ins, g) {
 function speakSummary() {
   if (!STATE.insight) return;
   if (speechSynthesis.speaking) { speechSynthesis.cancel(); return; }
-  const parts = [
-    ...(STATE.insight.compatibility || []),
-    ...(STATE.insight.risks || []),
-  ];
+  const parts = (STATE.insight.compatibility || []).concat(STATE.insight.risks || []);
   speechSynthesis.speak(new SpeechSynthesisUtterance(parts.join('. ') || 'No fit notes yet.'));
 }
 
 /* ---------- shop ---------- */
-function renderProducts(containerId = 'products', list = null) {
-  const container = document.getElementById(containerId);
+function renderProducts(containerId, list) {
+  containerId = containerId || 'products';
+  var container = document.getElementById(containerId);
   if (!container) return;
-  let items = list || [...catalog()];
+  var items = list || catalog().slice();
   if (!list && STATE.filters.size) {
-    items = items.filter(g => [...STATE.filters].every(f => (g.closure_type || '').includes(f) || (g.tags || []).includes(f)));
+    items = items.filter(function(g) { return Array.from(STATE.filters).every(function(f) { return (g.closure_type || '').indexOf(f) !== -1 || (g.tags || []).indexOf(f) !== -1; }); });
   }
-  const sort = document.getElementById('sort-select')?.value;
-  if (sort === 'price-low') items.sort((a, b) => priceOf(a) - priceOf(b));
-  if (sort === 'price-high') items.sort((a, b) => priceOf(b) - priceOf(a));
+  var sort = document.getElementById('sort-select') ? document.getElementById('sort-select').value : '';
+  if (sort === 'price-low') items.sort(function(a, b) { return priceOf(a) - priceOf(b); });
+  if (sort === 'price-high') items.sort(function(a, b) { return priceOf(b) - priceOf(a); });
   
-  container.innerHTML = items.map(g => {
-    const inCart = STATE.cart.includes(g.id);
-    return `
-    <article class="p-card" onclick="showProduct('${g.id}')">
-      <div class="p-media">
-        <img src="/${g.image_path}" alt="${g.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'" />
-        <span class="flag">${g.closure_type}</span>
-        <div class="cart-actions">
-          <button class="quick ${inCart ? 'hidden' : ''}" onclick="event.stopPropagation(); addToCart('${g.id}')">Add to bag</button>
-          <button class="quick remove ${!inCart ? 'hidden' : ''}" onclick="event.stopPropagation(); removeFromBag('${g.id}')">Remove</button>
-          <button class="quick modify" onclick="event.stopPropagation(); openWorkshop('${g.id}')">Modify</button>
-        </div>
-      </div>
-      <div class="p-body">
-        <h3>${g.name}</h3>
-        <p class="meta">${g.fabric || ''} · ${g.stretch} stretch</p>
-        <div class="row"><span class="price">$${priceOf(g)}</span></div>
-      </div>
-    </article>`;
+  container.innerHTML = items.map(function(g) {
+    var inCart = STATE.cart.indexOf(g.id) !== -1;
+    return '<article class="p-card" onclick="showProduct(\'' + g.id + '\')">' +
+      '<div class="p-media">' +
+      '<img src="/' + g.image_path + '" alt="' + g.name + '" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display=\'none\'" />' +
+      '<span class="flag">' + g.closure_type + '</span>' +
+      '<div class="cart-actions">' +
+      '<button class="quick ' + (inCart ? 'hidden' : '') + '" onclick="event.stopPropagation(); addToCart(\'' + g.id + '\')">Add to bag</button>' +
+      '<button class="quick remove ' + (!inCart ? 'hidden' : '') + '" onclick="event.stopPropagation(); removeFromBag(\'' + g.id + '\')">Remove</button>' +
+      '<button class="quick modify" onclick="event.stopPropagation(); openWorkshop(\'' + g.id + '\')">Modify</button>' +
+      '</div></div>' +
+      '<div class="p-body"><h3>' + g.name + '</h3><p class="meta">' + (g.fabric || '') + ' | ' + g.stretch + ' stretch</p><div class="row"><span class="price">$' + priceOf(g) + '</span></div></div></article>';
   }).join('') || '<p style="color:var(--ink-2)">No garments match these filters.</p>';
 }
 
 function toggleFilter(btn) {
-  const f = btn.dataset.filter;
-  STATE.filters.has(f) ? STATE.filters.delete(f) : STATE.filters.add(f);
+  var f = btn.dataset.filter;
+  if (STATE.filters.has(f)) STATE.filters.delete(f); else STATE.filters.add(f);
   btn.classList.toggle('active');
   renderProducts();
 }
@@ -552,7 +796,7 @@ function sortProducts() { renderProducts(); }
 
 /* ---------- product detail ---------- */
 function showProduct(id) {
-  const g = catalog().find(p => p.id === id);
+  var g = catalog().find(function(p) { return p.id === id; });
   if (!g) return;
   STATE.current = g;
   document.getElementById('breadcrumb-text').textContent = g.name;
@@ -560,58 +804,57 @@ function showProduct(id) {
   document.getElementById('product-price').textContent = '$' + priceOf(g);
   document.getElementById('product-description').textContent = g.description || '';
   document.getElementById('detail-img').src = '/' + g.image_path;
-  const set = (sid, v) => { const el = document.getElementById(sid); if (el) el.textContent = v || '—'; };
+  var set = function(sid, v) { var el = document.getElementById(sid); if (el) el.textContent = v || '-'; };
   set('spec-closure', g.closure_type); set('spec-back-rise', g.back_rise);
   set('spec-stretch', g.stretch); set('spec-seams', g.seams); set('spec-pockets', g.pocket_access);
   
-  const cartBtn = document.getElementById('add-to-cart-btn');
+  var cartBtn = document.getElementById('add-to-cart-btn');
   if (cartBtn) {
-    cartBtn.textContent = STATE.cart.includes(g.id) ? 'In bag' : 'Add to try-on bag';
-    cartBtn.disabled = STATE.cart.includes(g.id);
-    cartBtn.onclick = () => {
+    cartBtn.textContent = STATE.cart.indexOf(g.id) !== -1 ? 'In bag' : 'Add to try-on bag';
+    cartBtn.disabled = STATE.cart.indexOf(g.id) !== -1;
+    cartBtn.onclick = function() {
       addToCart(g.id);
       cartBtn.textContent = 'Added to bag';
       cartBtn.disabled = true;
     };
   }
 
-  evaluate().then(() => {
+  evaluate().then(function() {
     if (STATE.insight) {
       fillList('d-ok', STATE.insight.compatibility);
       fillList('d-warn', STATE.insight.risks);
       fillList('d-ask', STATE.insight.questions_for_seller);
-      const q = document.getElementById('questions-list');
-      if (q) q.innerHTML = (STATE.insight.questions_for_seller || []).map(t => `<label class="q-item"><input type="checkbox" /><span>${t}</span></label>`).join('');
+      var q = document.getElementById('questions-list');
+      if (q) q.innerHTML = (STATE.insight.questions_for_seller || []).map(function(t) { return '<label class="q-item"><input type="checkbox" /><span>' + t + '</span></label>'; }).join('');
     }
     
-    const comfort = getComfortInsights(STATE.profile, g);
-    const adaptPanel = document.getElementById('adapt-list');
+    var comfort = getComfortInsights(STATE.profile, g);
+    var adaptPanel = document.getElementById('adapt-list');
     if (adaptPanel) {
-      let html = '<h4 style="margin-bottom:12px; color:var(--accent);">AI Comfort Assessment</h4>';
+      var html = '<h4 style="margin-bottom:12px; color:var(--accent);">AI Comfort Assessment</h4>';
       if (comfort.insights.length === 0) {
         html += '<p style="color:var(--ink-2); font-size:14px;">This garment is highly compatible with your profile.</p>';
       } else {
-        html += '<ul style="margin-bottom:16px; list-style:none; padding:0;">' + comfort.insights.map(i => `<li style="margin-bottom:8px; font-size:14px; color:var(--ink-2); display:flex; gap:8px;"><span style="color:var(--warn);">⚠</span> ${i}</li>`).join('') + '</ul>';
+        html += '<ul style="margin-bottom:16px; list-style:none; padding:0;">' + comfort.insights.map(function(i) { return '<li style="margin-bottom:8px; font-size:14px; color:var(--ink-2); display:flex; gap:8px;"><span style="color:var(--warn);">!</span> ' + i + '</li>'; }).join('') + '</ul>';
       }
-      
       if (comfort.prompts.length > 0) {
         html += '<h4 style="margin-bottom:12px;">Suggested Workshop Modifications</h4>';
-        html += comfort.prompts.map(p => `
-          <div class="ai-input-wrapper" style="margin-bottom:10px;">
-            <input type="text" value="${p}" id="prompt-${g.id}" readonly />
-            <button onclick="quickModify('${g.id}', '${p}')">Modify</button>
-          </div>`).join('');
+        html += comfort.prompts.map(function(p) {
+          return '<div class="ai-input-wrapper" style="margin-bottom:10px;"><input type="text" value="' + p + '" id="prompt-' + g.id + '" readonly /><button onclick="quickModify(\'' + g.id + '\', \'' + p + '\')">Modify</button></div>';
+        }).join('');
       }
       adaptPanel.innerHTML = html;
     }
   });
+  
+  renderPressureZones(); // Update zones when product page loads
   navigateTo('product');
 }
 
 function quickModify(garmentId, prompt) {
   openWorkshop(garmentId);
-  setTimeout(() => {
-    const promptInput = document.getElementById('ws-prompt');
+  setTimeout(function() {
+    var promptInput = document.getElementById('ws-prompt');
     if (promptInput) {
       promptInput.value = prompt;
       runWorkshopMod();
@@ -619,60 +862,79 @@ function quickModify(garmentId, prompt) {
   }, 200);
 }
 
-/* ---------- NEW: WORKSHOP LOGIC ---------- */
+/* ---------- WORKSHOP LOGIC ---------- */
 function openWorkshop(garmentId) {
-  if (!STATE.cart.includes(garmentId)) addToCart(garmentId);
-  STATE.workshopGarment = catalog().find(p => p.id === garmentId);
-  STATE.workshopHistory = [];
+  if (STATE.cart.indexOf(garmentId) === -1) addToCart(garmentId);
+  var g = catalog().find(function(p) { return p.id === garmentId; });
+  STATE.workshopGarment = g;
   
-  document.getElementById('ws-original').src = '/' + STATE.workshopGarment.image_path;
-  document.getElementById('ws-current').src = '/' + STATE.workshopGarment.image_path;
-  document.getElementById('ws-chat-body').innerHTML = '<div class="chat-msg system">Select this garment to see how it can be adapted. Type a modification below.</div>';
+  // Check if we are resuming this exact garment's workshop
+  if (STATE.workshopState.garmentId === garmentId && STATE.workshopState.history && STATE.workshopState.history.length > 0) {
+    document.getElementById('ws-current').src = STATE.workshopState.currentImageUrl;
+  } else {
+    // New garment, reset workshop state
+    STATE.workshopState = { garmentId: garmentId, history: [], currentImageUrl: '/' + g.image_path };
+    localStorage.setItem('aequidrape_workshop', JSON.stringify(STATE.workshopState));
+    document.getElementById('ws-current').src = '/' + g.image_path;
+  }
+  
+  document.getElementById('ws-original').src = '/' + g.image_path;
   document.getElementById('ws-email-output').hidden = true;
   
+  renderWorkshopHistory();
+  renderPressureZones();
   navigateTo('workshop');
 }
 
 async function runWorkshopMod() {
-  const easePurpose = document.getElementById('ws-ease-purpose').value;
-  const fullPrompt = prompt + ' (wearing purpose: ' + easePurpose + ')';  
-  const prompt = document.getElementById('ws-prompt').value.trim();
-  const status = document.getElementById('ws-status');
+  var prompt = document.getElementById('ws-prompt').value.trim();
+  var status = document.getElementById('ws-status');
   if (!prompt) { status.textContent = 'Describe a modification first.'; return; }
+
+  var easeEl = document.getElementById('ws-ease-purpose');
+  var easePurpose = easeEl ? easeEl.value : 'basic';
+  var fullPrompt = prompt + ' (wearing purpose: ' + easePurpose + ')';
   
-  const currentImg = document.getElementById('ws-current').src;
-  const base64 = await toBase64(currentImg);
+  var currentImg = document.getElementById('ws-current').src;
+  var base64 = await toBase64(currentImg);
   
-  status.textContent = 'Applying modification...';
-  const chatBody = document.getElementById('ws-chat-body');
+  status.textContent = 'Applying modification... Please wait.';
+  var applyBtn = document.querySelector('#workshop-page .ai-input-wrapper button:last-child');
+  if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'Working...'; }
   
-  const userMsg = document.createElement('div');
+  var chatBody = document.getElementById('ws-chat-body');
+  
+  var userMsg = document.createElement('div');
   userMsg.className = 'chat-msg user';
-  userMsg.textContent = prompt;
+  userMsg.textContent = fullPrompt;
   chatBody.appendChild(userMsg);
   chatBody.scrollTop = chatBody.scrollHeight;
   
   document.getElementById('ws-prompt').value = '';
   
   try {
-    const res = await fetch('/api/modify-image', {
+    var res = await fetch('/api/modify-image', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_base64: base64, prompt }),
+      body: JSON.stringify({ image_base64: base64, prompt: fullPrompt }),
     });
-    const data = await res.json();
+    var data = await res.json();
     if (data.url) {
-      STATE.workshopHistory.push({ prompt, imageUrl: data.url });
+      STATE.workshopHistory.push({ prompt: fullPrompt, imageUrl: data.url });
+      
+      STATE.workshopState.history.push({ prompt: fullPrompt, imageUrl: data.url });
+      STATE.workshopState.currentImageUrl = data.url;
+      localStorage.setItem('aequidrape_workshop', JSON.stringify(STATE.workshopState));
+      
       document.getElementById('ws-current').src = data.url;
       
-      // Sync to global modifications so main studio try-on uses the latest
       if (STATE.workshopGarment) {
-        STATE.modifications[STATE.workshopGarment.id] = { prompt, url: data.url };
+        STATE.modifications[STATE.workshopGarment.id] = { prompt: fullPrompt, url: data.url };
         localStorage.setItem('aequidrape_mods', JSON.stringify(STATE.modifications));
       }
       
-      const aiMsg = document.createElement('div');
+      var aiMsg = document.createElement('div');
       aiMsg.className = 'chat-msg ai';
-      aiMsg.innerHTML = '<strong>Adaptation Applied:</strong> ' + prompt + '<br/><img src="' + data.url + '" alt="Modified" />';
+      aiMsg.innerHTML = '<strong>Adaptation Applied:</strong> ' + fullPrompt + '<br/><img src="' + data.url + '" alt="Modified" />';
       chatBody.appendChild(aiMsg);
       chatBody.scrollTop = chatBody.scrollHeight;
       
@@ -682,16 +944,18 @@ async function runWorkshopMod() {
     }
   } catch (e) {
     status.textContent = 'Modification failed: ' + e.message;
+  } finally {
+    if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Apply Change'; }
   }
 }
 
 async function generateEmail() {
-  const status = document.getElementById('ws-status');
+  var status = document.getElementById('ws-status');
   if (STATE.workshopHistory.length === 0) { status.textContent = 'Make at least one modification first.'; return; }
   
   status.textContent = 'Drafting intelligent email with AI...';
   try {
-    const res = await fetch('/api/generate-email', {
+    var res = await fetch('/api/generate-email', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         profile: STATE.profile || {},
@@ -699,7 +963,7 @@ async function generateEmail() {
         history: STATE.workshopHistory
       })
     });
-    const data = await res.json();
+    var data = await res.json();
     
     if (res.ok && data.email) {
       document.getElementById('ws-email-text').value = data.email;
@@ -715,26 +979,27 @@ async function generateEmail() {
 
 function tryOnThis() {
   if (STATE.current) {
-    if (!STATE.cart.includes(STATE.current.id)) addToCart(STATE.current.id);
+    if (STATE.cart.indexOf(STATE.current.id) === -1) addToCart(STATE.current.id);
     STATE.garmentId = STATE.current.id;
     renderGarmentList();
   }
   navigateTo('home');
-  setTimeout(() => document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' }), 60);
+  setTimeout(function() { var el = document.getElementById('studio'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 60);
 }
 
 function toggleGaugeDetails(e) {
-  const body = document.getElementById('gauge-details');
+  var body = document.getElementById('gauge-details');
   if (!body) return;
-  const open = body.hidden;
+  var open = body.hidden;
   body.hidden = !open;
   e.currentTarget.setAttribute('aria-expanded', String(open));
 }
 
 function switchTab(name, e) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
-  document.getElementById(name)?.classList.add('active');
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+  var target = document.getElementById(name);
+  if (target) target.classList.add('active');
   e.currentTarget.classList.add('active');
   e.currentTarget.setAttribute('aria-selected', 'true');
 }
