@@ -29,24 +29,24 @@ console.log('[youcam] API key ' + (getApiKey() ? 'loaded' : 'MISSING'));
 
 async function uploadImage(buffer: Buffer, filename: string): Promise<string> {
   const tmpDir = os.tmpdir();
-  const tmpFile = path.join(tmpDir, `aequidrape_${Date.now()}_${filename}`);
+  const tmpFile = path.join(tmpDir, 'aequidrape_' + Date.now() + '_' + filename);
   fs.writeFileSync(tmpFile, buffer);
   const ua = 'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0';
 
   const cleanup = () => { try { fs.unlinkSync(tmpFile); } catch {} };
 
-  // 1. Telegraph (Primary - works perfectly for valid, small JPEGs)
+  // 1. Telegraph (Primary)
   try {
     console.log('[upload] Trying telegra.ph...');
     const res = execSync(
-      `curl -s -X POST -F "file=@${tmpFile}" -A "${ua}" https://telegra.ph/upload`,
+      'curl -s -X POST -F "file=@' + tmpFile + '" -A "' + ua + '" https://telegra.ph/upload',
       { encoding: 'utf8', timeout: 30000 }
     ).trim();
-    
+
     const data = JSON.parse(res);
     if (data?.[0]?.src) {
       const url = 'https://telegra.ph' + data[0].src;
-      console.log('[upload] Success via telegra.ph:', url);
+      console.log('[upload] Success via telegra.ph');
       cleanup();
       return url;
     }
@@ -59,14 +59,14 @@ async function uploadImage(buffer: Buffer, filename: string): Promise<string> {
   try {
     console.log('[upload] Trying uguu.se...');
     const res = execSync(
-      `curl -s -F "files[]=@${tmpFile}" -A "${ua}" https://uguu.se/upload`,
+      'curl -s -F "files[]=@' + tmpFile + '" -A "' + ua + '" https://uguu.se/upload',
       { encoding: 'utf8', timeout: 30000 }
     ).trim();
-    
+
     const data = JSON.parse(res);
     if (data?.success === true && data?.files?.[0]?.url) {
       const url = data.files[0].url;
-      console.log('[upload] Success via uguu.se:', url);
+      console.log('[upload] Success via uguu.se');
       cleanup();
       return url;
     }
@@ -81,10 +81,10 @@ async function uploadImage(buffer: Buffer, filename: string): Promise<string> {
 async function pollTask(baseUrl: string, taskId: string, maxAttempts = 90): Promise<any> {
   for (let i = 1; i <= maxAttempts; i++) {
     await new Promise(r => setTimeout(r, 2000));
-    const res = await fetch(`${baseUrl}/${taskId}`, { headers: { Authorization: `Bearer ${getApiKey()}` } });
+    const res = await fetch(baseUrl + '/' + taskId, { headers: { Authorization: 'Bearer ' + getApiKey() } });
     const data = await res.json();
     const status = data?.data?.task_status;
-    console.log(`[Poll ${i}/${maxAttempts}] ${status}`);
+    console.log('[Poll ' + i + '/' + maxAttempts + '] ' + status);
     if (status === 'success') return data.data.results;
     if (status === 'error' || status === 'failed') throw new Error('Task failed: ' + JSON.stringify(data).slice(0, 300));
   }
@@ -97,20 +97,41 @@ function extractUrl(results: any): string {
   return u;
 }
 
+async function downloadToLocalCache(remoteUrl: string, hash: string): Promise<string> {
+  const localFile = path.join(CACHE_DIR, hash + '.jpg');
+  const localUrl = '/vto-cache/' + hash + '.jpg';
+
+  let res = await fetch(remoteUrl);
+  if (!res.ok) {
+    console.log('[VTO] plain fetch of result got ' + res.status + ', retrying with bearer token');
+    res = await fetch(remoteUrl, { headers: { Authorization: 'Bearer ' + getApiKey() } });
+  }
+  if (!res.ok) {
+    throw new Error('Failed to download rendered image (' + res.status + ' ' + res.statusText + '): ' + remoteUrl);
+  }
+
+  const buf = Buffer.from(await res.arrayBuffer());
+  fs.writeFileSync(localFile, buf);
+  return localUrl;
+}
+
 export async function modifyGarmentImage(garmentBuffer: Buffer, prompt: string): Promise<string> {
   const API_KEY = getApiKey();
   if (!API_KEY) throw new Error('Missing API Key');
   const garmentUrl = await uploadImage(garmentBuffer, 'garment_edit.jpg');
-  const fullPrompt = `A high-quality flat lay photo of a clothing item. ${prompt}. Professional studio lighting, clean background, high resolution.`;
+  const fullPrompt = 'A high-quality flat lay photo of a clothing item. ' + prompt + '. Professional studio lighting, clean background, high resolution.';
   const startRes = await fetch(EDIT_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + API_KEY },
     body: JSON.stringify({ src_file_urls: [garmentUrl], model: 'youcam-image-v2', prompt: fullPrompt, size: '1024*1024' }),
   });
   if (!startRes.ok) throw new Error('Edit start failed: ' + (await startRes.text()).slice(0, 200));
   const taskId = (await startRes.json())?.data?.task_id;
   if (!taskId) throw new Error('No task_id for edit');
-  return extractUrl(await pollTask(EDIT_URL, taskId));
+  const remoteUrl = extractUrl(await pollTask(EDIT_URL, taskId));
+
+  const hash = crypto.createHash('md5').update(garmentUrl).update(prompt).digest('hex');
+  return downloadToLocalCache(remoteUrl, hash);
 }
 
 export async function runClothesVTO(personBuffer: Buffer, garmentBuffer: Buffer | null, garmentUrl?: string) {
@@ -118,31 +139,46 @@ export async function runClothesVTO(personBuffer: Buffer, garmentBuffer: Buffer 
   if (!API_KEY) throw new Error('Missing API Key');
 
   const personUrl = await uploadImage(personBuffer, 'person.jpg');
-  
+
   let garmentUrlFinal = garmentUrl;
+
+  // CRITICAL FIX: If garmentUrl is a local path (e.g., from our cache), read it and upload to a public host
+  if (garmentUrlFinal && garmentUrlFinal.startsWith('/')) {
+    const localPath = path.join(process.cwd(), 'public', garmentUrlFinal);
+    if (fs.existsSync(localPath)) {
+      console.log('[VTO] Local garment detected, uploading to public host...');
+      const localBuffer = fs.readFileSync(localPath);
+      garmentUrlFinal = await uploadImage(localBuffer, 'modified_garment.jpg');
+    } else {
+      throw new Error('Local cached garment not found: ' + localPath);
+    }
+  }
+
   if (!garmentUrlFinal && garmentBuffer) {
     garmentUrlFinal = await uploadImage(garmentBuffer, 'garment.jpg');
   }
+  
   if (!garmentUrlFinal) throw new Error('Missing garment image');
 
   const hash = crypto.createHash('md5').update(personUrl).update(garmentUrlFinal).digest('hex');
   const cacheFile = path.join(CACHE_DIR, hash + '.json');
-  try { 
-    const c = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); 
-    if (c.url) {
+  const cachedLocalFile = path.join(CACHE_DIR, hash + '.jpg');
+  try {
+    const c = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+    if (c.url && fs.existsSync(cachedLocalFile)) {
       console.log('[VTO] Cache hit');
-      return { url: c.url, status: 'cached' }; 
+      return { url: c.url, status: 'cached' };
     }
   } catch { /* miss */ }
 
   console.log('[VTO] Starting task with URLs...');
   const startRes = await fetch(VTO_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
-    body: JSON.stringify({ 
-      src_file_url: personUrl, 
-      ref_file_url: garmentUrlFinal, 
-      garment_category: 'auto' 
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + API_KEY },
+    body: JSON.stringify({
+      src_file_url: personUrl,
+      ref_file_url: garmentUrlFinal,
+      garment_category: 'auto'
     }),
   });
 
@@ -151,7 +187,9 @@ export async function runClothesVTO(personBuffer: Buffer, garmentBuffer: Buffer 
   const taskId = startData?.data?.task_id;
   if (!taskId) throw new Error('No task_id for VTO: ' + JSON.stringify(startData));
 
-  const url = extractUrl(await pollTask(VTO_URL, taskId));
-  fs.writeFileSync(cacheFile, JSON.stringify({ url }));
-  return { url, status: 'live' };
+  const remoteUrl = extractUrl(await pollTask(VTO_URL, taskId));
+  const localUrl = await downloadToLocalCache(remoteUrl, hash);
+
+  fs.writeFileSync(cacheFile, JSON.stringify({ url: localUrl }));
+  return { url: localUrl, status: 'live' };
 }

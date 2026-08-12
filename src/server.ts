@@ -16,7 +16,7 @@ if (fs.existsSync(envPath)) {
 
 const garmentsPath = path.join(process.cwd(), 'data', 'garments.json');
 let garments: any[] = [];
-try { garments = JSON.parse(fs.readFileSync(garmentsPath, 'utf8')); } 
+try { garments = JSON.parse(fs.readFileSync(garmentsPath, 'utf8')); }
 catch (e) { console.warn('[server] Could not load garments.json'); }
 
 // 2. EXPRESS SETUP
@@ -43,7 +43,6 @@ app.post('/api/evaluate', (req, res) => {
   if (profile.posture === 'seated' && garment.back_rise === 'high') ok.push('High back rise supports seated coverage.');
   if (profile.posture === 'seated' && garment.back_rise !== 'high') warn.push('Back rise may sit low while seated.');
   ask.push('What is the seated back length in centimetres?');
-  
   res.json({ garment, insight: { compatibility: ok, risks: warn, questions_for_seller: ask, summary: `${garment.name}: ${ok.join(' ')} ${warn.join(' ')}` } });
 });
 
@@ -65,15 +64,40 @@ app.post('/api/try-on', async (req, res) => {
     const { person_base64, garment_base64, garment_url } = req.body;
     if (!person_base64) return res.status(400).json({ error: 'Missing person image' });
     const personBuffer = Buffer.from(person_base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-    
     let garmentBuffer: Buffer | null = null;
     if (garment_base64) {
       garmentBuffer = Buffer.from(garment_base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
     }
-    
-    const out = await runClothesVTO(personBuffer, garmentBuffer, garment_url);
-    res.json(out);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+
+    const out: any = await runClothesVTO(personBuffer, garmentBuffer, garment_url);
+
+    // Log the raw shape once so you can confirm the real key name coming
+    // back from youcam.ts, then trim/remove this once confirmed.
+    console.log('[try-on] raw result from runClothesVTO:', out);
+
+    // runClothesVTO's return shape isn't guaranteed to be { url }. Normalize
+    // it here so the client always gets a top-level `url`, the same way
+    // /api/modify-image already does for modifyGarmentImage's result.
+    const url =
+      out?.url ??
+      out?.resultUrl ??
+      out?.result_url ??
+      out?.imageUrl ??
+      out?.image_url ??
+      out?.output_url ??
+      out?.data?.url ??
+      null;
+
+    if (!url) {
+      console.error('[try-on] no recognizable url field in result:', out);
+      return res.status(502).json({ error: 'Try-on succeeded but returned no image URL', raw: out });
+    }
+
+    res.json({ status: out?.status ?? 'success', url });
+  } catch (e: any) {
+    console.error('[try-on] error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('*', (_req, res) => {

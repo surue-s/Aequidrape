@@ -1,10 +1,10 @@
 /* Aequidrape — single source of truth for frontend logic */
 
-
 const STATE = {
   page: 'home',
   profile: JSON.parse(localStorage.getItem('aequidrape_profile') || 'null'),
-  cart: JSON.parse(localStorage.getItem('aequidrape_cart') || '[]'), // NEW: Cart state
+  cart: JSON.parse(localStorage.getItem('aequidrape_cart') || '[]'),
+  modifications: JSON.parse(localStorage.getItem('aequidrape_mods') || '{}'), // RESTORED
   products: [],
   garmentId: null,
   current: null,
@@ -12,6 +12,7 @@ const STATE = {
   filters: new Set(),
   photo: { key: 'standing', src: '/demo-images/01-standing-original.jpg', custom: false, base64: null },
   garment: { base64: null, modifiedUrl: null, custom: false },
+  tryOnReady: false, // NEW: gates the compare slider so it only responds once a real result exists
 };
 
 const PHOTOS = {
@@ -24,31 +25,38 @@ const PHOTOS = {
 const DEX_MAP = ['standard', 'limited', 'one_handed'];
 const DEX_LABELS = ['Full use of both hands', 'Limited grip or strength', 'One hand available'];
 
+/* ---------- Comfort Engine ---------- */
+function getComfortInsights(profile, garment) {
+  const insights = [];
+  const prompts = [];
+  if (!profile || !garment) return { insights, prompts };
 
-async function resizeAndCompress(file, maxSize = 1024) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let w = img.width;
-        let h = img.height;
-        if (w > maxSize || h > maxSize) {
-          if (w > h) { h = (h / w) * maxSize; w = maxSize; }
-          else { w = (w / h) * maxSize; h = maxSize; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
+  if (profile.dexterity === 'limited' || profile.dexterity === 'one_handed') {
+    if (garment.closure_type?.includes('button')) {
+      insights.push('Standard buttons require fine motor skills.');
+      prompts.push('replace buttons with magnetic closures');
+    }
+  }
+  
+  if (profile.posture === 'seated' || profile.mobility_aids?.includes('prosthetic-leg')) {
+    if (garment.stretch === 'slight' || garment.stretch === 'none') {
+      insights.push('Low-stretch fabric may restrict movement while seated or around prosthetics.');
+      prompts.push('add 4-way stretch panels or side zippers');
+    }
+    if (garment.back_rise !== 'high') {
+      insights.push('Standard back rise may expose the lower back when seated.');
+      prompts.push('add a drop-tail back or high-rise waistband');
+    }
+  }
+  
+  if (profile.sensory?.includes('tag-free')) {
+    insights.push('Neck tags will cause sensory irritation.');
+    prompts.push('remove all tags and print care instructions on fabric');
+  }
+  
+  return { insights, prompts };
 }
+
 /* ---------- boot ---------- */
 document.addEventListener('DOMContentLoaded', async () => {
   if (window.AOS) AOS.init({ duration: 700, once: true, disable: matchMedia('(prefers-reduced-motion: reduce)').matches });
@@ -56,24 +64,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadProducts();
   renderGarmentList();
   
-  // NEW: Knob drag listeners for compare slider
-  const knob = document.getElementById('cmp-knob');
-  const range = document.getElementById('cmp-range');
   const stage = document.getElementById('stage');
-  if (knob && range && stage) {
+  if (stage) {
     let isDragging = false;
-    const startDrag = (e) => { isDragging = true; e.preventDefault(); };
-    const endDrag = () => isDragging = false;
-    const moveDrag = (e) => {
-      if (!isDragging) return;
+    const updateSlider = (e) => {
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const rect = stage.getBoundingClientRect();
-      let pct = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
-      range.value = pct;
+      let pct = ((clientX - rect.left) / rect.width) * 100;
+      pct = Math.max(0, Math.min(100, pct));
       setCmp(pct);
     };
-    knob.addEventListener('mousedown', startDrag);
-    knob.addEventListener('touchstart', startDrag, { passive: false });
+    // Gate: dragging only does anything once a real try-on result is showing.
+    // Without this, dragging the stage before/between generations forces the
+    // after-layer, divider and knob visible over an empty or stale image.
+    const startDrag = (e) => { if (!STATE.tryOnReady) return; isDragging = true; updateSlider(e); e.preventDefault(); };
+    const endDrag = () => { isDragging = false; };
+    const moveDrag = (e) => { if (!isDragging || !STATE.tryOnReady) return; updateSlider(e); e.preventDefault(); };
+
+    stage.addEventListener('mousedown', startDrag);
+    stage.addEventListener('touchstart', startDrag, { passive: false });
     document.addEventListener('mouseup', endDrag);
     document.addEventListener('touchend', endDrag);
     document.addEventListener('mousemove', moveDrag);
@@ -105,6 +114,19 @@ function addToCart(id) {
     localStorage.setItem('aequidrape_cart', JSON.stringify(STATE.cart));
     updateCartUI();
   }
+}
+
+function removeFromBag(id) {
+  STATE.cart = STATE.cart.filter(cId => cId !== id);
+  if (STATE.garmentId === id) {
+    STATE.garmentId = null;
+    resetStage();
+  }
+  delete STATE.modifications[id];
+  localStorage.setItem('aequidrape_cart', JSON.stringify(STATE.cart));
+  localStorage.setItem('aequidrape_mods', JSON.stringify(STATE.modifications));
+  renderGarmentList();
+  updateCartUI();
 }
 
 function updateCartUI() {
@@ -189,6 +211,31 @@ function selectPhoto(key, btn) {
 
 function uploadPhoto() { document.getElementById('photo-upload').click(); }
 
+async function resizeAndCompress(file, maxSize = 1024) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxSize || h > maxSize) {
+          if (w > h) { h = (h / w) * maxSize; w = maxSize; }
+          else { w = (w / h) * maxSize; h = maxSize; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function onPhotoFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
@@ -201,34 +248,55 @@ function onPhotoFile(input) {
     resetStage();
   });
 }
+
 /* ---------- studio: garment ---------- */
 function renderGarmentList() {
   const list = document.getElementById('garment-list');
   if (!list) return;
   
-  // NEW: Only show items in cart
   const cartItems = catalog().filter(g => STATE.cart.includes(g.id));
   if (cartItems.length === 0) {
     list.innerHTML = '<p style="color:var(--ink-2); padding: 12px 0; font-size: 0.95rem; text-align: center;">Your try-on bag is empty.<br/>Add garments from the shop to try them on.</p>';
     return;
   }
   
-  list.innerHTML = cartItems.map(g => `
-    <button class="garment-opt ${STATE.garmentId === g.id ? 'active' : ''}" onclick="selectGarment('${g.id}', this)">
-      <span><strong>${g.name}</strong><small>${g.closure_type}</small></span>
-      <span class="price">$${priceOf(g)}</span>
-    </button>`).join('');
+  list.innerHTML = cartItems.map(g => {
+    const isModified = STATE.modifications[g.id];
+    const isActive = STATE.garmentId === g.id;
+    return `
+      <div class="garment-opt-wrap" style="display:flex; gap:8px; align-items:center;">
+        <button class="garment-opt ${isActive ? 'active' : ''}" onclick="selectGarment('${g.id}', this)" style="flex:1;">
+          <span>
+            <strong>${g.name} ${isModified ? '<small style="color:var(--accent); font-weight:600;">(Modified)</small>' : ''}</strong>
+            <small>${g.closure_type}</small>
+          </span>
+          <span class="price">$${priceOf(g)}</span>
+        </button>
+        <button class="remove-btn" onclick="event.stopPropagation(); removeFromBag('${g.id}')" aria-label="Remove from bag">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>`;
+  }).join('');
 }
 
 function selectGarment(id, btn) {
   STATE.garmentId = id;
-  STATE.garment = { base64: null, modifiedUrl: null, custom: false };
+  // CRITICAL FIX: Load modifiedUrl from STATE.modifications if it exists
+  STATE.garment = { base64: null, modifiedUrl: STATE.modifications[id]?.url || null, custom: false };
+  
   document.querySelectorAll('.garment-opt').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  document.getElementById('garment-preview').hidden = true;
+  
+  const prev = document.getElementById('garment-preview');
+  if (STATE.garment.modifiedUrl) {
+    prev.hidden = false;
+    document.getElementById('garment-preview-img').src = STATE.garment.modifiedUrl;
+    document.getElementById('garment-preview-label').textContent = 'Modified: ' + (STATE.modifications[id]?.prompt || '');
+  } else {
+    prev.hidden = true;
+  }
   document.getElementById('modify-status').textContent = '';
 }
-
 
 function onGarmentFile(input) {
   const file = input.files && input.files[0];
@@ -243,6 +311,7 @@ function onGarmentFile(input) {
     document.getElementById('garment-preview-label').textContent = 'Your garment';
   });
 }
+
 async function toBase64(url) {
   const res = await fetch(url);
   const blob = await res.blob();
@@ -274,6 +343,13 @@ async function runModification() {
     });
     const data = await res.json();
     if (data.url) {
+      // CRITICAL FIX: Save modification mapped to this specific garment ID
+      if (STATE.garmentId) {
+        STATE.modifications[STATE.garmentId] = { prompt, url: data.url };
+        localStorage.setItem('aequidrape_mods', JSON.stringify(STATE.modifications));
+        renderGarmentList();
+      }
+      
       STATE.garment.modifiedUrl = data.url;
       const prev = document.getElementById('garment-preview');
       prev.hidden = false;
@@ -290,47 +366,52 @@ async function runModification() {
 
 /* ---------- studio: try-on ---------- */
 function resetStage() {
+  STATE.tryOnReady = false;
   ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = true; });
   document.getElementById('gauge-card').hidden = true;
   document.getElementById('studio-status').textContent = '';
 }
 
-// UPDATED: Apply inline styles as robust fallback for CSS variable mapping
 function setCmp(v) {
   const stage = document.getElementById('stage');
   if (!stage) return;
   const pct = Math.max(0, Math.min(100, parseFloat(v)));
 
-  // 1. Update CSS variable
   stage.style.setProperty('--pos', pct + '%');
 
-  // 2. Force clip-path on the after layer
-  const afterLayer = document.getElementById('layer-after');
+  var beforeLayer = document.querySelector('.stage .layer.before');
+  if (beforeLayer) {
+    beforeLayer.style.zIndex = '1';
+    beforeLayer.style.clipPath = 'none';
+    beforeLayer.style.webkitClipPath = 'none';
+  }
+
+  var afterLayer = document.getElementById('layer-after');
   if (afterLayer) {
-    afterLayer.style.clipPath = `inset(0 0 0 ${pct}%)`;
-    afterLayer.style.webkitClipPath = `inset(0 0 0 ${pct}%)`;
+    afterLayer.style.zIndex = '2';
+    afterLayer.style.clipPath = 'inset(0 0 0 ' + pct + '%)';
+    afterLayer.style.webkitClipPath = 'inset(0 0 0 ' + pct + '%)';
     afterLayer.hidden = false;
   }
 
-  // 3. Force position on the line and knob
-  const line = document.getElementById('cmp-line');
+  var line = document.getElementById('cmp-line');
   if (line) {
-    line.style.left = `${pct}%`;
-    line.style.transform = `translateX(-50%)`; // Fallback centering
+    line.style.left = pct + '%';
+    line.style.zIndex = '4';
     line.hidden = false;
   }
 
-  const knob = document.getElementById('cmp-knob');
+  var knob = document.getElementById('cmp-knob');
   if (knob) {
-    knob.style.left = `${pct}%`;
-    knob.style.transform = `translate(-50%, -50%)`;
+    knob.style.left = pct + '%';
+    knob.style.zIndex = '5';
     knob.hidden = false;
   }
 
-  // 4. Sync native range input
-  const range = document.getElementById('cmp-range');
+  var range = document.getElementById('cmp-range');
   if (range) {
     range.value = pct;
+    range.style.zIndex = '6';
     range.hidden = false;
   }
 }
@@ -344,15 +425,30 @@ async function runTryOn() {
   status.textContent = 'Contacting YouCam...';
   const personBase64 = STATE.photo.base64 || await toBase64(STATE.photo.src);
   const payload = { person_base64: personBase64 };
-  if (STATE.garment.modifiedUrl) payload.garment_url = STATE.garment.modifiedUrl;
-  else payload.garment_base64 = await currentGarmentBase64();
+  
+  if (STATE.garmentId && STATE.modifications[STATE.garmentId]) {
+    payload.garment_url = STATE.modifications[STATE.garmentId].url;
+  } else if (STATE.garment.modifiedUrl) {
+    payload.garment_url = STATE.garment.modifiedUrl;
+  } else {
+    payload.garment_base64 = await currentGarmentBase64();
+  }
 
   try {
     const res = await fetch('/api/try-on', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
     if (data.url) {
-      document.getElementById('stage-after').src = data.url;
+      const afterImg = document.getElementById('stage-after');
+      // Wait for the new render to actually load before revealing the
+      // compare slider — otherwise a drag can land on a half-loaded /
+      // still-previous image and the split looks broken.
+      await new Promise((resolve) => {
+        afterImg.onload = resolve;
+        afterImg.onerror = resolve;
+        afterImg.src = data.url + (data.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+      });
       ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = false; });
+      STATE.tryOnReady = true;
       setCmp(50);
       status.textContent = data.status === 'cached' ? 'Cached render ready. Drag to compare.' : 'Real render ready. Drag to compare.';
     } else {
@@ -364,7 +460,7 @@ async function runTryOn() {
   await evaluate();
 }
 
-/* ---------- fit notes (neutral, no verdicts) ---------- */
+/* ---------- fit notes ---------- */
 async function evaluate() {
   const g = catalog().find(p => p.id === STATE.garmentId) || STATE.current;
   if (!g) return;
@@ -445,6 +541,7 @@ function renderProducts(containerId = 'products', list = null) {
     </article>`;
   }).join('') || '<p style="color:var(--ink-2)">No garments match these filters.</p>';
 }
+
 function toggleFilter(btn) {
   const f = btn.dataset.filter;
   STATE.filters.has(f) ? STATE.filters.delete(f) : STATE.filters.add(f);
@@ -453,7 +550,6 @@ function toggleFilter(btn) {
 }
 
 function sortProducts() { renderProducts(); }
-
 
 /* ---------- product detail ---------- */
 function showProduct(id) {
@@ -469,7 +565,6 @@ function showProduct(id) {
   set('spec-closure', g.closure_type); set('spec-back-rise', g.back_rise);
   set('spec-stretch', g.stretch); set('spec-seams', g.seams); set('spec-pockets', g.pocket_access);
   
-  // NEW: Hook up add to cart button in detail view
   const cartBtn = document.getElementById('add-to-cart-btn');
   if (cartBtn) {
     cartBtn.textContent = STATE.cart.includes(g.id) ? 'In bag' : 'Add to try-on bag';
@@ -490,7 +585,6 @@ function showProduct(id) {
       if (q) q.innerHTML = (STATE.insight.questions_for_seller || []).map(t => `<label class="q-item"><input type="checkbox" /><span>${t}</span></label>`).join('');
     }
     
-    // Run Comfort Engine
     const comfort = getComfortInsights(STATE.profile, g);
     const adaptPanel = document.getElementById('adapt-list');
     if (adaptPanel) {
@@ -498,7 +592,7 @@ function showProduct(id) {
       if (comfort.insights.length === 0) {
         html += '<p style="color:var(--ink-2); font-size:14px;">This garment is highly compatible with your profile.</p>';
       } else {
-        html += '<ul style="margin-bottom:16px;">' + comfort.insights.map(i => `<li style="margin-bottom:8px; font-size:14px; color:var(--ink-2);">⚠ ${i}</li>`).join('') + '</ul>';
+        html += '<ul style="margin-bottom:16px; list-style:none; padding:0;">' + comfort.insights.map(i => `<li style="margin-bottom:8px; font-size:14px; color:var(--ink-2); display:flex; gap:8px;"><span style="color:var(--warn);">⚠</span> ${i}</li>`).join('') + '</ul>';
       }
       
       if (comfort.prompts.length > 0) {
@@ -515,8 +609,23 @@ function showProduct(id) {
   navigateTo('product');
 }
 
+function quickModify(garmentId, prompt) {
+  if (!STATE.cart.includes(garmentId)) addToCart(garmentId);
+  STATE.garmentId = garmentId;
+  STATE.current = catalog().find(p => p.id === garmentId);
+  
+  setTimeout(() => {
+    const promptInput = document.getElementById('modify-prompt');
+    if (promptInput) promptInput.value = prompt;
+    document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
+  }, 100);
+  
+  navigateTo('home');
+}
+
 function tryOnThis() {
   if (STATE.current) {
+    if (!STATE.cart.includes(STATE.current.id)) addToCart(STATE.current.id);
     STATE.garmentId = STATE.current.id;
     renderGarmentList();
   }
@@ -538,19 +647,4 @@ function switchTab(name, e) {
   document.getElementById(name)?.classList.add('active');
   e.currentTarget.classList.add('active');
   e.currentTarget.setAttribute('aria-selected', 'true');
-}
-
-function quickModify(garmentId, prompt) {
-  if (!STATE.cart.includes(garmentId)) addToCart(garmentId);
-  STATE.garmentId = garmentId;
-  STATE.current = catalog().find(p => p.id === garmentId);
-  
-  // Pre-fill the prompt and navigate to workshop
-  setTimeout(() => {
-    const promptInput = document.getElementById('modify-prompt');
-    if (promptInput) promptInput.value = prompt;
-    document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
-  }, 100);
-  
-  navigateTo('home'); // Go to studio
 }

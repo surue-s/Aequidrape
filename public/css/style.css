@@ -591,14 +591,35 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; }
 
 /* ---------- Slider interaction fix ---------- */
 .stage { cursor: ew-resize; }
-.stage .layer, 
-.stage .layer img.base, 
-.stage .cmp-line { z-index: 3; }
-.stage .cmp-knob { z-index: 4; }
+.stage .layer img.base { pointer-events: none; }
+.stage .cmp-line, 
+.stage .cmp-knob, 
 .stage .cmp-range, 
 .stage .tag { 
   pointer-events: none; 
 }
+
+/* Fix Compare Slider Layer Stacking */
+.stage {
+  position: relative;
+  isolation: isolate;
+}
+.stage .layer {
+  position: absolute;
+  inset: 0;
+}
+.stage .layer.before {
+  z-index: 1;
+}
+.stage .layer.after {
+  z-index: 2;
+  clip-path: inset(0 0 0 var(--pos));
+  -webkit-clip-path: inset(0 0 0 var(--pos));
+}
+.stage .tag.l, .stage .tag.r { z-index: 3; }
+.stage .cmp-line { z-index: 4; }
+.stage .cmp-knob { z-index: 5; }
+.stage .cmp-range { z-index: 6; }
 
 /* Issue 2: Large, clear garment preview */
 .garment-preview {
@@ -625,3 +646,48 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; }
 
 /* Issue 4: Compact Detail Page */
 .tab-panel { padding: 20px 0; }
+
+/* Issue 2: Shop Cart Actions Override */
+.p-media .cart-actions { 
+  position: absolute; bottom: 14px; left: 14px; right: 14px; 
+  display: flex; gap: 8px; z-index: 2; 
+}
+.p-media .cart-actions .quick { 
+  position: static !important; 
+  transform: none !important; 
+  opacity: 1 !important; 
+  flex: 1; 
+  text-align: center; 
+  margin: 0; 
+  left: auto;
+  width: auto;
+}
+.p-media .cart-actions .quick.remove { 
+  background: var(--risk); 
+}
+.p-card:hover .cart-actions .quick, 
+.p-card:focus-within .cart-actions .quick {
+  transform: none !important; /* Override the hover translate */
+}
+
+/* Fix Compare Slider Layer Stacking */
+.stage {
+  position: relative;
+  isolation: isolate; /* Creates a clean stacking context */
+}
+.stage .layer {
+  position: absolute;
+  inset: 0;
+}
+.stage .layer.before {
+  z-index: 1; /* Original image sits at the bottom */
+}
+.stage .layer.after {
+  z-index: 2; /* Try-on image sits on top */
+  clip-path: inset(0 0 0 var(--pos));
+  -webkit-clip-path: inset(0 0 0 var(--pos));
+}
+.stage .tag.l, .stage .tag.r { z-index: 3; }
+.stage .cmp-line { z-index: 4; }
+.stage .cmp-knob { z-index: 5; }
+.stage .cmp-range { z-index: 6; }
