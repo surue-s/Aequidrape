@@ -142,6 +142,26 @@ function renderPressureZones() {
   }).join('');
 }
 
+function renderStudioChat() {
+  var chatPanel = document.getElementById('studio-chat');
+  var chatBody = document.getElementById('studio-chat-body');
+  if (!chatPanel || !chatBody) return;
+
+  if (!STATE.workshopState.history || STATE.workshopState.history.length === 0) {
+    chatPanel.hidden = true;
+    return;
+  }
+
+  chatPanel.hidden = false;
+  chatBody.innerHTML = '';
+  STATE.workshopState.history.forEach(function(h) {
+    var aiMsg = document.createElement('div');
+    aiMsg.className = 'chat-msg ai';
+    aiMsg.innerHTML = '<strong>Applied:</strong> ' + h.prompt + '<br/><img src="' + h.imageUrl + '" alt="Modified" />';
+    chatBody.appendChild(aiMsg);
+  });
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
 function renderWorkshopHistory() {
   var chatBody = document.getElementById('ws-chat-body');
   if (!chatBody) return;
@@ -163,7 +183,7 @@ function renderWorkshopHistory() {
 
 function navigateToWorkshop() {
   if (!STATE.workshopState.garmentId) {
-    alert('Please select a garment from the Shop or Product page to start a workshop session.');
+    alert('Please select a garment from the Shop to start a workshop session.');
     navigateTo('shop');
     return;
   }
@@ -183,7 +203,6 @@ function navigateToWorkshop() {
   renderPressureZones();
   navigateTo('workshop');
 }
-
 function toggleVoiceInput(inputId, btnId) {
   var input = document.getElementById(inputId);
   var micBtn = document.getElementById(btnId);
@@ -523,7 +542,7 @@ function selectGarment(id, btn) {
   document.querySelectorAll('.garment-opt').forEach(function(b) { b.classList.remove('active'); });
   if (btn) btn.classList.add('active');
   
-  const prev = document.getElementById('garment-preview');
+  var prev = document.getElementById('garment-preview');
   if (STATE.garment.modifiedUrl) {
     prev.hidden = false;
     document.getElementById('garment-preview-img').src = STATE.garment.modifiedUrl;
@@ -532,7 +551,16 @@ function selectGarment(id, btn) {
     prev.hidden = true;
   }
   document.getElementById('modify-status').textContent = '';
-  renderPressureZones(); // Update zones when garment changes
+  renderPressureZones();
+
+  // Sync workshop state to this garment
+  STATE.workshopGarment = catalog().find(function(p) { return p.id === id; });
+  if (STATE.workshopState.garmentId === id && STATE.workshopState.history.length > 0) {
+    renderStudioChat();
+  } else {
+    var chatPanel = document.getElementById('studio-chat');
+    if (chatPanel) chatPanel.hidden = true;
+  }
 }
 
 function onGarmentFile(input) {
@@ -572,37 +600,75 @@ async function runModification() {
   if (!prompt) { status.textContent = 'Describe a modification first.'; return; }
   var base64 = await currentGarmentBase64();
   if (!base64) { status.textContent = 'Pick or upload a garment first.'; return; }
-  
+
+  var easeEl = document.getElementById('ws-ease-purpose');
+  var easePurpose = easeEl ? easeEl.value : 'basic';
+  var fullPrompt = prompt + ' (purpose: ' + easePurpose + ')';
+
   status.textContent = 'Modifying garment... Please wait.';
-  var modifyBtn = document.querySelector('.studio-panel.right .ai-input-wrapper button:last-child');
-  if (modifyBtn) { modifyBtn.disabled = true; modifyBtn.textContent = 'Working...'; }
-  
+  var modBtn = document.querySelector('.studio-panel.right .ai-input-wrapper button:last-child');
+  if (modBtn) { modBtn.disabled = true; modBtn.textContent = 'Working...'; }
+
+  // Add user message to chat
+  var chatBody = document.getElementById('studio-chat-body');
+  var chatPanel = document.getElementById('studio-chat');
+  if (chatBody && chatPanel) {
+    chatPanel.hidden = false;
+    var userMsg = document.createElement('div');
+    userMsg.className = 'chat-msg user';
+    userMsg.textContent = fullPrompt;
+    chatBody.appendChild(userMsg);
+    chatBody.scrollTop = chatBody.scrollHeight;
+  }
+
+  document.getElementById('modify-prompt').value = '';
+
   try {
     var res = await fetch('/api/modify-image', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_base64: base64, prompt: prompt }),
+      body: JSON.stringify({ image_base64: base64, prompt: fullPrompt }),
     });
     var data = await res.json();
     if (data.url) {
+      // Save to modifications
       if (STATE.garmentId) {
-        STATE.modifications[STATE.garmentId] = { prompt: prompt, url: data.url };
+        STATE.modifications[STATE.garmentId] = { prompt: fullPrompt, url: data.url };
         localStorage.setItem('aequidrape_mods', JSON.stringify(STATE.modifications));
         renderGarmentList();
       }
-      
+
+      // Save to persistent workshop state
+      STATE.workshopState.garmentId = STATE.garmentId;
+      STATE.workshopState.history.push({ prompt: fullPrompt, imageUrl: data.url });
+      STATE.workshopState.currentImageUrl = data.url;
+      localStorage.setItem('aequidrape_workshop', JSON.stringify(STATE.workshopState));
+
+      // Sync workshop garment
+      STATE.workshopGarment = catalog().find(function(p) { return p.id === STATE.garmentId; });
+
+      // Update garment preview
       STATE.garment.modifiedUrl = data.url;
       var prev = document.getElementById('garment-preview');
       prev.hidden = false;
       document.getElementById('garment-preview-img').src = data.url;
-      document.getElementById('garment-preview-label').textContent = 'Modified: ' + prompt;
+      document.getElementById('garment-preview-label').textContent = 'Modified: ' + fullPrompt;
       status.textContent = 'Garment modified. Ready for try-on.';
+
+      // Add AI response to chat
+      if (chatBody) {
+        var aiMsg = document.createElement('div');
+        aiMsg.className = 'chat-msg ai';
+        aiMsg.innerHTML = '<strong>Applied:</strong> ' + fullPrompt + '<br/><img src="' + data.url + '" alt="Modified" />';
+        chatBody.appendChild(aiMsg);
+        chatBody.scrollTop = chatBody.scrollHeight;
+      }
     } else {
       status.textContent = 'Modification failed: ' + (data.error || 'unknown error');
     }
   } catch (e) {
     status.textContent = 'Modification failed: ' + e.message;
   } finally {
-    if (modifyBtn) { modifyBtn.disabled = false; modifyBtn.textContent = 'Modify'; }
+    if (modBtn) { modBtn.disabled = false; modBtn.textContent = 'Modify'; }
   }
 }
 
@@ -859,33 +925,34 @@ function quickModify(garmentId, prompt) {
       promptInput.value = prompt;
       runWorkshopMod();
     }
-  }, 200);
+  }, 300);
 }
-
 /* ---------- WORKSHOP LOGIC ---------- */
 function openWorkshop(garmentId) {
   if (STATE.cart.indexOf(garmentId) === -1) addToCart(garmentId);
   var g = catalog().find(function(p) { return p.id === garmentId; });
   STATE.workshopGarment = g;
+  STATE.garmentId = garmentId;
+  renderGarmentList();
+
+  // Set workshop visuals
+  document.getElementById('ws-original').src = '/' + g.image_path;
   
-  // Check if we are resuming this exact garment's workshop
   if (STATE.workshopState.garmentId === garmentId && STATE.workshopState.history && STATE.workshopState.history.length > 0) {
     document.getElementById('ws-current').src = STATE.workshopState.currentImageUrl;
+    renderWorkshopHistory();
   } else {
-    // New garment, reset workshop state
     STATE.workshopState = { garmentId: garmentId, history: [], currentImageUrl: '/' + g.image_path };
     localStorage.setItem('aequidrape_workshop', JSON.stringify(STATE.workshopState));
     document.getElementById('ws-current').src = '/' + g.image_path;
+    var chatBody = document.getElementById('ws-chat-body');
+    if (chatBody) chatBody.innerHTML = '<div class="chat-msg system">Type a modification below to adapt this garment.</div>';
   }
   
-  document.getElementById('ws-original').src = '/' + g.image_path;
   document.getElementById('ws-email-output').hidden = true;
-  
-  renderWorkshopHistory();
   renderPressureZones();
   navigateTo('workshop');
 }
-
 async function runWorkshopMod() {
   var prompt = document.getElementById('ws-prompt').value.trim();
   var status = document.getElementById('ws-status');
@@ -950,8 +1017,11 @@ async function runWorkshopMod() {
 }
 
 async function generateEmail() {
-  var status = document.getElementById('ws-status');
-  if (STATE.workshopHistory.length === 0) { status.textContent = 'Make at least one modification first.'; return; }
+  var status = document.getElementById('modify-status');
+  var history = STATE.workshopState.history || [];
+  var garment = STATE.workshopGarment || catalog().find(function(p) { return p.id === STATE.garmentId; });
+  
+  if (history.length === 0) { status.textContent = 'Make at least one modification first.'; return; }
   
   status.textContent = 'Drafting intelligent email with AI...';
   try {
@@ -959,8 +1029,8 @@ async function generateEmail() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         profile: STATE.profile || {},
-        garment: STATE.workshopGarment,
-        history: STATE.workshopHistory
+        garment: garment || {},
+        history: history
       })
     });
     var data = await res.json();
@@ -970,7 +1040,7 @@ async function generateEmail() {
       document.getElementById('ws-email-output').hidden = false;
       status.textContent = 'AI Email draft ready.';
     } else {
-      status.textContent = 'AI failed: ' + (data.error || 'Unknown error. Check server logs.');
+      status.textContent = 'AI failed: ' + (data.error || 'Unknown error.');
     }
   } catch (e) {
     status.textContent = 'Network error: ' + e.message;
