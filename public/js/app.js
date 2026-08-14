@@ -28,8 +28,8 @@ const PHOTOS = {
   prosthetic: '/demo-images/04-prosthetic-original.jpg',
 };
 
-const DEX_MAP = ['standard', 'limited', 'one_handed'];
-const DEX_LABELS = ['Full use of both hands', 'Limited grip or strength', 'One hand available'];
+var DEX_MAP = ['standard', 'limited', 'one_handed', 'no_hands'];
+var DEX_LABELS = ['Full use of both hands', 'Limited grip or strength', 'One hand available', 'No hands'];
 
 /* ---------- Pressure Zone Rules ---------- */
 function getPressureZones(profile, garment) {
@@ -103,14 +103,23 @@ function getPressureZones(profile, garment) {
     });
   }
 
-  if (profile.dexterity === 'limited' || profile.dexterity === 'one_handed') {
+  if (profile.dexterity === 'limited' || profile.dexterity === 'one_handed' || profile.dexterity === 'no_hands') {
     zones.push({
       location: 'Closure Points',
-      severity: /button/i.test(garment.closure_type || '') ? 'high' : 'low',
-      reason: /button/i.test(garment.closure_type || '')
-        ? 'Button closures create pressure points that are difficult to manage with limited dexterity.'
-        : (garment.closure_type || 'Standard') + ' closure minimizes fine-motor pressure points.'
+      severity: /button/i.test(garment.closure_type || '') ? 'high' : 'medium',
+      reason: profile.dexterity === 'no_hands'
+        ? 'No-hand use requires fully automated or adaptive closures (magnetic, velcro, or pullover).'
+        : /button/i.test(garment.closure_type || '')
+          ? 'Button closures create pressure points that are difficult to manage with limited dexterity.'
+          : (garment.closure_type || 'Standard') + ' closure minimizes fine-motor pressure points.'
     });
+    if (profile.dexterity === 'no_hands') {
+      zones.push({
+        location: 'Donning / Doffing Points',
+        severity: 'high',
+        reason: 'Garment must be donnable without hand use. Consider open-back designs, magnetic closures, or pull-on styles.'
+      });
+    }
   }
 
   return zones;
@@ -162,6 +171,7 @@ function renderStudioChat() {
   });
   chatBody.scrollTop = chatBody.scrollHeight;
 }
+
 function renderWorkshopHistory() {
   var chatBody = document.getElementById('ws-chat-body');
   if (!chatBody) return;
@@ -183,26 +193,17 @@ function renderWorkshopHistory() {
 
 function navigateToWorkshop() {
   if (!STATE.workshopState.garmentId) {
-    alert('Please select a garment from the Shop to start a workshop session.');
+    alert('Please select a garment from the Shop to start modifying.');
     navigateTo('shop');
     return;
   }
-  
-  var g = catalog().find(function(p) { return p.id === STATE.workshopState.garmentId; });
-  if (!g) {
-    navigateTo('shop');
-    return;
-  }
-  
-  STATE.workshopGarment = g;
-  document.getElementById('ws-original').src = '/' + g.image_path;
-  document.getElementById('ws-current').src = STATE.workshopState.currentImageUrl || ('/' + g.image_path);
-  document.getElementById('ws-email-output').hidden = true;
-  
-  renderWorkshopHistory();
-  renderPressureZones();
-  navigateTo('workshop');
+  navigateTo('home');
+  setTimeout(function() { 
+    var studio = document.getElementById('studio'); 
+    if (studio) studio.scrollIntoView({ behavior: 'smooth' }); 
+  }, 100);
 }
+
 function toggleVoiceInput(inputId, btnId) {
   var input = document.getElementById(inputId);
   var micBtn = document.getElementById(btnId);
@@ -215,7 +216,6 @@ function toggleVoiceInput(inputId, btnId) {
     return;
   }
   
-  // If already listening, stop
   if (STATE.isListening && STATE.recognition) {
     STATE.recognition.stop();
     return;
@@ -234,7 +234,6 @@ function toggleVoiceInput(inputId, btnId) {
   
   STATE.recognition.onresult = function(event) {
     var transcript = event.results[0][0].transcript;
-    // Append to existing text — never overwrite typed input
     input.value = input.value ? input.value + ' ' + transcript : transcript;
   };
   
@@ -259,6 +258,7 @@ function toggleVoiceInput(inputId, btnId) {
   
   STATE.recognition.start();
 }
+
 /* ---------- Comfort Engine ---------- */
 function getComfortInsights(profile, garment) {
   const insights = [];
@@ -276,6 +276,17 @@ function getComfortInsights(profile, garment) {
   if (profile.sensory && profile.sensory.includes('soft-fabric')) {
     insights.push('Sensory needs require zero-pressure contact at fit points (shoulders, underarms).');
     prompts.push('add flat-lock seams and remove all pressure points at contact areas');
+  }
+  
+  if (profile.dexterity === 'limited' || profile.dexterity === 'one_handed' || profile.dexterity === 'no_hands') {
+    if (/button/i.test(garment.closure_type || '')) {
+      insights.push('Standard buttons require fine motor skills.');
+      prompts.push('replace buttons with magnetic closures');
+    }
+    if (profile.dexterity === 'no_hands') {
+      insights.push('No-hand use requires fully adaptive closures or pullover designs.');
+      prompts.push('convert to pullover style with open-back or magnetic front closure');
+    }
   }
   
   return { insights: insights, prompts: prompts };
@@ -379,58 +390,69 @@ function navigateTo(page) {
 function toggleMobNav() { document.body.classList.toggle('nav-open'); }
 
 /* ---------- profile ---------- */
-function updateDexLabel(v) { const el = document.getElementById('dex-label'); if (el) el.textContent = DEX_LABELS[+v]; }
+function updateDexLabel(v) { var el = document.getElementById('dex-label'); if (el) el.textContent = DEX_LABELS[+v]; }
 
 function updateProfileBadge() {
-  const text = document.getElementById('badge-text');
-  const badge = document.getElementById('profile-badge');
+  var text = document.getElementById('badge-text');
+  var badge = document.getElementById('profile-badge');
   if (STATE.profile) {
-    const p = { seated: 'Seated', standing: 'Standing', mixed: 'Mixed' }[STATE.profile.posture] || 'Set';
-    const d = { standard: 'Full use', limited: 'Limited', one_handed: '1-hand' }[STATE.profile.dexterity] || '';
+    var p = { seated: 'Seated', standing: 'Standing', mixed: 'Mixed' }[STATE.profile.posture] || 'Set';
+    var d = { standard: 'Full use', limited: 'Limited', one_handed: '1-hand', no_hands: 'No hands' }[STATE.profile.dexterity] || '';
     text.textContent = p + ' | ' + d;
     badge.classList.add('set');
   } else { text.textContent = 'Set profile'; badge.classList.remove('set'); }
 }
 
 function saveProfile() {
-  const f = document.getElementById('profile-form');
-  const postureEl = f.querySelector('input[name="posture"]:checked');
+  var f = document.getElementById('profile-form');
+  var postureEl = f.querySelector('input[name="posture"]:checked');
   if (!postureEl) { document.getElementById('profile-status').textContent = 'Choose a posture to continue.'; return; }
+
+  var dexEl = f.querySelector('input[name="dexterity"]:checked');
+
   STATE.profile = {
     posture: postureEl.value,
-    dexterity: DEX_MAP[+document.getElementById('dex-range').value],
+    dexterity: dexEl ? dexEl.value : 'standard',
     dex_notes: document.getElementById('dex-notes').value.trim(),
     sensory: Array.from(f.querySelectorAll('input[name="sensory"]:checked')).map(function(i) { return i.value; }),
     mobility_aids: Array.from(f.querySelectorAll('input[name="mobility_aids"]:checked')).map(function(i) { return i.value; }),
     aid_other: document.getElementById('aid-other').value.trim(),
     fit_concerns: Array.from(f.querySelectorAll('input[name="fit_concerns"]:checked')).map(function(i) { return i.value; }),
+    measurements: {
+      height: document.getElementById('m-height').value || null,
+      neck: document.getElementById('m-neck').value || null,
+      chest: document.getElementById('m-chest').value || null,
+      waist: document.getElementById('m-waist').value || null,
+      hip: document.getElementById('m-hip').value || null,
+      shoulder: document.getElementById('m-shoulder').value || null,
+      arm: document.getElementById('m-arm').value || null,
+      inseam: document.getElementById('m-inseam').value || null
+    }
   };
   localStorage.setItem('aequidrape_profile', JSON.stringify(STATE.profile));
   updateProfileBadge();
-  renderPressureZones(); // Update zones when profile changes
+  renderPressureZones();
   navigateTo('shop');
 }
 
 function applyNeed(kind) {
-  if (!STATE.profile) STATE.profile = { posture: 'seated', dexterity: 'standard', sensory: [], mobility_aids: [], fit_concerns: [], dex_notes: '', aid_other: '' };
+  if (!STATE.profile) STATE.profile = { posture: 'seated', dexterity: 'standard', sensory: [], mobility_aids: [], fit_concerns: [], dex_notes: '', aid_other: '', measurements: {} };
   if (kind === 'seated') STATE.profile.posture = 'seated';
   if (kind === 'one_handed') STATE.profile.dexterity = 'one_handed';
   if (kind === 'sensory') STATE.profile.sensory = ['tag-free'];
   if (kind === 'prosthetic') STATE.profile.mobility_aids = ['prosthetic-leg'];
   updateProfileBadge();
-  renderPressureZones(); // Update zones when profile changes
+  renderPressureZones();
   navigateTo('shop');
 }
 
 /* ---------- studio: photo ---------- */
 function selectPhoto(key, btn) {
-  // Remove active class from all buttons in the rail
   document.querySelectorAll('.photo-rail .thumb-btn').forEach(function(b) { 
     b.classList.remove('active'); 
   });
   btn.classList.add('active');
 
-  // Check if it's a custom uploaded photo or a pre-loaded one
   if (STATE.customPhotos && STATE.customPhotos[key]) {
     STATE.photo = { key: key, src: STATE.customPhotos[key], custom: true, base64: STATE.customPhotos[key] };
     document.getElementById('stage-before').src = STATE.customPhotos[key];
@@ -443,6 +465,7 @@ function selectPhoto(key, btn) {
   
   resetStage();
 }
+
 function uploadPhoto() { document.getElementById('photo-upload').click(); }
 
 async function resizeAndCompress(file, maxSize) {
@@ -478,26 +501,21 @@ function onPhotoFile(input) {
   resizeAndCompress(file).then(function(base64) {
     const customKey = 'custom_' + Date.now();
     
-    // 1. Save to state
     if (!STATE.customPhotos) STATE.customPhotos = {};
     STATE.customPhotos[customKey] = base64;
     STATE.photo = { key: customKey, src: base64, custom: true, base64: base64 };
     
-    // 2. Update the "Original" side of the slider stage
     document.getElementById('stage-before').src = base64;
     document.getElementById('consent-row').hidden = false;
     resetStage();
 
-    // 3. Inject new thumbnail into the photo rail
     const rail = document.querySelector('.photo-rail');
     const uploadBtn = rail.querySelector('.thumb-btn.upload');
     
-    // Clear active states
     rail.querySelectorAll('.thumb-btn').forEach(function(b) { 
       b.classList.remove('active'); 
     });
 
-    // Create the new button
     const newBtn = document.createElement('button');
     newBtn.className = 'thumb-btn active';
     newBtn.innerHTML = '<img src="' + base64 + '" alt="Your upload" />';
@@ -505,10 +523,7 @@ function onPhotoFile(input) {
       selectPhoto(customKey, newBtn);
     };
     
-    // Insert it right before the "Yours" upload button
     rail.insertBefore(newBtn, uploadBtn);
-    
-    // Reset file input so the user can upload the same file again if needed
     input.value = '';
   });
 }
@@ -553,7 +568,6 @@ function selectGarment(id, btn) {
   document.getElementById('modify-status').textContent = '';
   renderPressureZones();
 
-  // Sync workshop state to this garment
   STATE.workshopGarment = catalog().find(function(p) { return p.id === id; });
   if (STATE.workshopState.garmentId === id && STATE.workshopState.history.length > 0) {
     renderStudioChat();
@@ -609,7 +623,6 @@ async function runModification() {
   var modBtn = document.querySelector('.studio-panel.right .ai-input-wrapper button:last-child');
   if (modBtn) { modBtn.disabled = true; modBtn.textContent = 'Working...'; }
 
-  // Add user message to chat
   var chatBody = document.getElementById('studio-chat-body');
   var chatPanel = document.getElementById('studio-chat');
   if (chatBody && chatPanel) {
@@ -630,23 +643,19 @@ async function runModification() {
     });
     var data = await res.json();
     if (data.url) {
-      // Save to modifications
       if (STATE.garmentId) {
         STATE.modifications[STATE.garmentId] = { prompt: fullPrompt, url: data.url };
         localStorage.setItem('aequidrape_mods', JSON.stringify(STATE.modifications));
         renderGarmentList();
       }
 
-      // Save to persistent workshop state
       STATE.workshopState.garmentId = STATE.garmentId;
       STATE.workshopState.history.push({ prompt: fullPrompt, imageUrl: data.url });
       STATE.workshopState.currentImageUrl = data.url;
       localStorage.setItem('aequidrape_workshop', JSON.stringify(STATE.workshopState));
 
-      // Sync workshop garment
       STATE.workshopGarment = catalog().find(function(p) { return p.id === STATE.garmentId; });
 
-      // Update garment preview
       STATE.garment.modifiedUrl = data.url;
       var prev = document.getElementById('garment-preview');
       prev.hidden = false;
@@ -654,7 +663,6 @@ async function runModification() {
       document.getElementById('garment-preview-label').textContent = 'Modified: ' + fullPrompt;
       status.textContent = 'Garment modified. Ready for try-on.';
 
-      // Add AI response to chat
       if (chatBody) {
         var aiMsg = document.createElement('div');
         aiMsg.className = 'chat-msg ai';
@@ -913,7 +921,7 @@ function showProduct(id) {
     }
   });
   
-  renderPressureZones(); // Update zones when product page loads
+  renderPressureZones();
   navigateTo('product');
 }
 
@@ -925,8 +933,9 @@ function quickModify(garmentId, prompt) {
       promptInput.value = prompt;
       runWorkshopMod();
     }
-  }, 300);
+  }, 200);
 }
+
 /* ---------- WORKSHOP LOGIC ---------- */
 function openWorkshop(garmentId) {
   if (STATE.cart.indexOf(garmentId) === -1) addToCart(garmentId);
@@ -935,7 +944,6 @@ function openWorkshop(garmentId) {
   STATE.garmentId = garmentId;
   renderGarmentList();
 
-  // Set workshop visuals
   document.getElementById('ws-original').src = '/' + g.image_path;
   
   if (STATE.workshopState.garmentId === garmentId && STATE.workshopState.history && STATE.workshopState.history.length > 0) {
@@ -953,6 +961,7 @@ function openWorkshop(garmentId) {
   renderPressureZones();
   navigateTo('workshop');
 }
+
 async function runWorkshopMod() {
   var prompt = document.getElementById('ws-prompt').value.trim();
   var status = document.getElementById('ws-status');
@@ -1017,7 +1026,7 @@ async function runWorkshopMod() {
 }
 
 async function generateEmail() {
-  var status = document.getElementById('modify-status');
+  var status = document.getElementById('ws-status');
   var history = STATE.workshopState.history || [];
   var garment = STATE.workshopGarment || catalog().find(function(p) { return p.id === STATE.garmentId; });
   

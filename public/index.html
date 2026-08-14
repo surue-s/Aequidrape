@@ -308,43 +308,56 @@
               <input type="text" class="text-input" id="dex-notes" placeholder="Describe grip, reach, tremor, anything else (optional)" />
             </div>
 
-            <div class="form-block">
-              <h3>Sensory</h3>
-              <p>Select anything that applies.</p>
+                        <div class="form-block">
+              <h3>Hand and arm function</h3>
+              <p>Choose what applies today.</p>
               <div class="chips-row">
-                <label class="chip-sel"><input type="checkbox" name="sensory" value="tag-free" /><span class="box">Tags irritate</span></label>
-                <label class="chip-sel"><input type="checkbox" name="sensory" value="soft-fabric" /><span class="box">Needs soft fabric</span></label>
+                <label class="chip-sel"><input type="radio" name="dexterity" value="standard" checked /><span class="box">Full use of both hands</span></label>
+                <label class="chip-sel"><input type="radio" name="dexterity" value="limited" /><span class="box">Limited grip or strength</span></label>
+                <label class="chip-sel"><input type="radio" name="dexterity" value="one_handed" /><span class="box">One hand available</span></label>
+                <label class="chip-sel"><input type="radio" name="dexterity" value="no_hands" /><span class="box">No hands</span></label>
               </div>
+              <input type="text" class="text-input" id="dex-notes" placeholder="Describe grip, reach, tremor, anything else (optional)" />
             </div>
 
             <div class="form-block">
-              <h3>Mobility aids</h3>
-              <p>Be as specific as you need — no photos required.</p>
-              <div class="chips-row">
-                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="manual-wheelchair" /><span class="box">Manual wheelchair</span></label>
-                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="power-chair" /><span class="box">Power chair</span></label>
-                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="crutches" /><span class="box">Crutches</span></label>
-                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="cane" /><span class="box">Cane</span></label>
-                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="walker" /><span class="box">Walker</span></label>
-                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="leg-brace" /><span class="box">Leg brace</span></label>
-                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="prosthetic-arm" /><span class="box">Prosthetic arm</span></label>
-                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="prosthetic-leg" /><span class="box">Prosthetic leg</span></label>
-                <label class="chip-sel"><input type="checkbox" name="mobility_aids" value="orthotics" /><span class="box">Orthotics</span></label>
+              <h3>Body measurements</h3>
+              <p>Optional — improves fit notes and pressure zone accuracy.</p>
+              <div class="measurements-grid">
+                <div class="measure-item">
+                  <label for="m-height">Height (cm)</label>
+                  <input type="number" id="m-height" min="0" max="250" placeholder="—" />
+                </div>
+                <div class="measure-item">
+                  <label for="m-neck">Neck (cm)</label>
+                  <input type="number" id="m-neck" min="0" max="100" placeholder="—" />
+                </div>
+                <div class="measure-item">
+                  <label for="m-chest">Chest / Bust (cm)</label>
+                  <input type="number" id="m-chest" min="0" max="250" placeholder="—" />
+                </div>
+                <div class="measure-item">
+                  <label for="m-waist">Waist (cm)</label>
+                  <input type="number" id="m-waist" min="0" max="250" placeholder="—" />
+                </div>
+                <div class="measure-item">
+                  <label for="m-hip">Hip (cm)</label>
+                  <input type="number" id="m-hip" min="0" max="250" placeholder="—" />
+                </div>
+                <div class="measure-item">
+                  <label for="m-shoulder">Shoulder width (cm)</label>
+                  <input type="number" id="m-shoulder" min="0" max="100" placeholder="—" />
+                </div>
+                <div class="measure-item">
+                  <label for="m-arm">Arm length (cm)</label>
+                  <input type="number" id="m-arm" min="0" max="120" placeholder="—" />
+                </div>
+                <div class="measure-item">
+                  <label for="m-inseam">Inseam / Leg (cm)</label>
+                  <input type="number" id="m-inseam" min="0" max="150" placeholder="—" />
+                </div>
               </div>
-              <input type="text" class="text-input" id="aid-other" placeholder="Other aid or detail (optional)" />
             </div>
-
-            <div class="form-block">
-              <h3>Fit concerns</h3>
-              <p>Select anything that applies.</p>
-              <div class="chips-row">
-                <label class="chip-sel"><input type="checkbox" name="fit_concerns" value="shoulder-access" /><span class="box">Shoulder access</span></label>
-                <label class="chip-sel"><input type="checkbox" name="fit_concerns" value="back-coverage" /><span class="box">Back coverage</span></label>
-                <label class="chip-sel"><input type="checkbox" name="fit_concerns" value="pocket-access" /><span class="box">Pocket access</span></label>
-                <label class="chip-sel"><input type="checkbox" name="fit_concerns" value="hip-fit" /><span class="box">Hip fit</span></label>
-              </div>
-            </div>
-
             <div style="display:flex; gap:14px; justify-content:flex-end; margin-top:40px">
               <button type="button" class="btn-ghost-pill" onclick="navigateTo('home')">Cancel</button>
               <button type="button" class="btn-dark" onclick="saveProfile()">Save and browse
@@ -508,7 +521,7 @@
         </div>
       </div>
     </section>
-     
+
   <footer>
     <div class="container">
       <p class="foot-word">aequidrape<span>.</span></p>

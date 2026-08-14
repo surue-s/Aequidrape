@@ -39,10 +39,16 @@ app.post('/api/evaluate', (req, res) => {
   if (!profile || !garment) return res.status(400).json({ error: 'Missing profile or garment' });
 
   const ok: string[] = [], warn: string[] = [], ask: string[] = [];
-  if ((profile.dexterity === 'limited' || profile.dexterity === 'one_handed') && /magnetic|hook|zipper/.test(garment.closure_type || '')) ok.push(`${garment.closure_type} closure supports easier dressing.`);
+  
+  // Updated to include 'no_hands' and check for adaptive closures
+  if ((profile.dexterity === 'limited' || profile.dexterity === 'one_handed' || profile.dexterity === 'no_hands') && /magnetic|hook|zipper|velcro|pullover/i.test(garment.closure_type || '')) {
+    ok.push(`${garment.closure_type} closure supports easier dressing.`);
+  }
   if (profile.posture === 'seated' && garment.back_rise === 'high') ok.push('High back rise supports seated coverage.');
   if (profile.posture === 'seated' && garment.back_rise !== 'high') warn.push('Back rise may sit low while seated.');
+  
   ask.push('What is the seated back length in centimetres?');
+  
   res.json({ garment, insight: { compatibility: ok, risks: warn, questions_for_seller: ask, summary: `${garment.name}: ${ok.join(' ')} ${warn.join(' ')}` } });
 });
 
@@ -99,7 +105,20 @@ app.post('/api/generate-email', async (req, res) => {
 
   const modsList = history.map((h: any, i: number) => `${i + 1}. ${h.prompt}`).join('\n');
   
-const systemPrompt = `You are an expert adaptive fashion advocate and accessibility consultant, trained in 3D virtual garment design for disabled people. Your task is to draft a polite, professional, and highly effective inquiry email to a clothing brand on behalf of a disabled shopper.
+  // Extract and format body measurements for the AI prompt
+  const measurements = profile.measurements || {};
+  const measureStr = [
+    measurements.height ? 'Height: ' + measurements.height + 'cm' : '',
+    measurements.neck ? 'Neck: ' + measurements.neck + 'cm' : '',
+    measurements.chest ? 'Chest/Bust: ' + measurements.chest + 'cm' : '',
+    measurements.waist ? 'Waist: ' + measurements.waist + 'cm' : '',
+    measurements.hip ? 'Hip: ' + measurements.hip + 'cm' : '',
+    measurements.shoulder ? 'Shoulder width: ' + measurements.shoulder + 'cm' : '',
+    measurements.arm ? 'Arm length: ' + measurements.arm + 'cm' : '',
+    measurements.inseam ? 'Inseam/Leg: ' + measurements.inseam + 'cm' : ''
+  ].filter(Boolean).join(', ') || 'Not provided';
+
+  const systemPrompt = `You are an expert adaptive fashion advocate and accessibility consultant, trained in 3D virtual garment design for disabled people. Your task is to draft a polite, professional, and highly effective inquiry email to a clothing brand on behalf of a disabled shopper.
 
 Use the following concepts from adaptive fashion research:
 - "Wearing ease": the distance between body and garment, which must be distributed differently for seated postures, prosthetics, and sensory needs.
@@ -107,7 +126,7 @@ Use the following concepts from adaptive fashion research:
 - "Fashion points": areas where the garment drapes freely for aesthetic appearance.
 - "Co-design": the collaborative process of Design–Display–Evaluation–Adjustment.
 
-The shopper has used our platform to identify necessary modifications based on their specific posture, dexterity, sensory needs, and mobility aids. Your goal is to clearly communicate these needs without oversharing private medical details, explain *why* the modifications are necessary, and ask if the brand can accommodate these alterations or offer similar adaptive alternatives.
+The shopper has used our platform to identify necessary modifications based on their specific posture, dexterity, sensory needs, mobility aids, and exact body measurements. Your goal is to clearly communicate these needs without oversharing private medical details, explain *why* the modifications are necessary, and ask if the brand can accommodate these alterations or offer similar adaptive alternatives.
 
 Tone: Professional, respectful, empowering, and clear.
 Format: Output ONLY the email Subject line (starting with "Subject: ") and the Email Body. Do not include any introductory or concluding remarks outside the email itself.`;
@@ -117,12 +136,15 @@ Format: Output ONLY the email Subject line (starting with "Subject: ") and the E
 - Dexterity: ${profile.dexterity || 'Not specified'}
 - Sensory Needs: ${(profile.sensory || []).join(', ') || 'None'}
 - Mobility Aids: ${(profile.mobility_aids || []).join(', ') || 'None'}
+- Fit Concerns: ${(profile.fit_concerns || []).join(', ') || 'None'}
 - Additional Context: ${profile.dex_notes || profile.aid_other || 'None'}
+- Body Measurements: ${measureStr}
 
 Garment Details:
 - Name: ${garment.name || 'Garment'}
 - Current Closure: ${garment.closure_type || 'Standard'}
 - Fabric/Stretch: ${garment.fabric || 'Standard'}, ${garment.stretch || 'Standard'}
+- Back Rise: ${garment.back_rise || 'Standard'}
 
 Requested Modifications (from Workshop History):
 ${modsList || 'No specific modifications logged.'}
@@ -139,7 +161,8 @@ Draft the email now.`;
         'X-Title': 'Aequidrape'
       },
       body: JSON.stringify({
-        model: 'cohere/north-mini-code:free',
+        // Reverted to Llama 3.1 8B Instruct - much better for natural language emails than code-optimized models
+        model: 'meta-llama/llama-3.1-8b-instruct:free',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
