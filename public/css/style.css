@@ -923,3 +923,9 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; }
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Background removal loading indicator */
+.studio-status.processing {
+  color: var(--accent);
+  font-weight: 600;
+}

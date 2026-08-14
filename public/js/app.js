@@ -763,40 +763,57 @@ async function runTryOn() {
   );
 
   status.textContent = isAdaptiveProfile 
-    ? 'Applying adaptive drape (AI fit may vary for prosthetics & seated postures)...' 
-    : 'Contacting YouCam...';
-    
-  const personBase64 = STATE.photo.base64 || await toBase64(STATE.photo.src);
-  const payload = { person_base64: personBase64 };
-  
-  if (STATE.garmentId && STATE.modifications[STATE.garmentId]) {
-    payload.garment_url = STATE.modifications[STATE.garmentId].url;
-  } else if (STATE.garment.modifiedUrl) {
-    payload.garment_url = STATE.garment.modifiedUrl;
-  } else {
-    payload.garment_base64 = await currentGarmentBase64();
-  }
+    ? 'Preparing adaptive try-on...' 
+    : 'Preparing try-on...';
 
   try {
+    // PHASE 1: Background removal
+    status.textContent = 'Isolating subject from background...';
+    var personSrc = STATE.photo.base64 || STATE.photo.src;
+    var bgResult = await removeBackground(personSrc);
+
+    // Convert clean blob to base64 for sending
+    var cleanBase64 = bgResult.cleanDataUrl;
+
+    // PHASE 2: Build payload with clean person image
+    status.textContent = 'Contacting YouCam...';
+    var payload = { person_base64: cleanBase64 };
+    
+    if (STATE.garmentId && STATE.modifications[STATE.garmentId]) {
+      payload.garment_url = STATE.modifications[STATE.garmentId].url;
+    } else if (STATE.garment.modifiedUrl) {
+      payload.garment_url = STATE.garment.modifiedUrl;
+    } else {
+      payload.garment_base64 = await currentGarmentBase64();
+    }
+
+    // PHASE 3: Send to VTO
     const res = await fetch('/api/try-on', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
+    
     if (data.url) {
+      // PHASE 4: Composite result back onto original background
+      status.textContent = 'Compositing final result...';
+      var finalImageUrl = await compositeWithBackground(data.url);
+
       const afterImg = document.getElementById('stage-after');
       await new Promise(function(resolve) {
         afterImg.onload = resolve;
         afterImg.onerror = resolve;
-        afterImg.src = data.url + (data.url.indexOf('?') !== -1 ? '&' : '?') + '_t=' + Date.now();
+        afterImg.src = finalImageUrl;
       });
+      
       ['layer-after', 'tag-after', 'cmp-line', 'cmp-knob', 'cmp-range'].forEach(function(id) { var el = document.getElementById(id); if (el) el.hidden = false; });
       STATE.tryOnReady = true;
       setCmp(50);
       status.textContent = data.status === 'cached' 
         ? 'Cached render ready. Drag to compare.' 
-        : 'Render ready. Drag to compare. (AI fit may vary for prosthetics & seated postures due to current model limitations)';
+        : 'Render ready. Drag to compare.';
     } else {
       status.textContent = 'Try-on failed: ' + (data.error || 'unknown error');
     }
   } catch (e) {
+    console.error('[try-on] pipeline error:', e);
     status.textContent = 'Try-on failed: ' + e.message;
   }
   await evaluate();
