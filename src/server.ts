@@ -118,35 +118,35 @@ app.post('/api/generate-email', async (req, res) => {
     measurements.inseam ? 'Inseam/Leg: ' + measurements.inseam + 'cm' : ''
   ].filter(Boolean).join(', ') || 'Not provided';
 
-  const systemPrompt = `You are an expert adaptive fashion advocate and accessibility consultant, trained in 3D virtual garment design for disabled people. Your task is to draft a polite, professional, and highly effective inquiry email to a clothing brand on behalf of a disabled shopper.
+    const systemPrompt = `You are an adaptive fashion advocate writing a professional inquiry email to a clothing brand on behalf of a disabled shopper.
 
-Use the following concepts from adaptive fashion research:
-- "Wearing ease": the distance between body and garment, which must be distributed differently for seated postures, prosthetics, and sensory needs.
-- "Fit points": areas where the garment has direct contact with the body (shoulders, underarms, waist).
-- "Fashion points": areas where the garment drapes freely for aesthetic appearance.
-- "Co-design": the collaborative process of Design–Display–Evaluation–Adjustment.
+Write a clear, concise email (under 200 words) that:
+1. Briefly introduces the shopper's needs (posture, dexterity, mobility aids) without oversharing medical details
+2. States the specific modification requested and explains simply why it is needed for their body
+3. Asks if the brand can accommodate the modification or offer similar adaptive alternatives
 
-The shopper has used our platform to identify necessary modifications based on their specific posture, dexterity, sensory needs, mobility aids, and exact body measurements. Your goal is to clearly communicate these needs without oversharing private medical details, explain *why* the modifications are necessary, and ask if the brand can accommodate these alterations or offer similar adaptive alternatives.
+STRICT FORMATTING RULES:
+- Use plain text ONLY
+- No markdown, no bold, no bullet points, no asterisks, no numbered lists
+- Write in simple, short paragraphs
+- Do not explain technical concepts like "wearing ease" or "fit points" — just describe the practical need in plain language
+- Keep the tone warm, professional, and direct
 
-Tone: Professional, respectful, empowering, and clear.
-Format: Output ONLY the email Subject line (starting with "Subject: ") and the Email Body. Do not include any introductory or concluding remarks outside the email itself.`;
+Format: Output ONLY the email Subject line (starting with "Subject: ") followed by the Email Body. Do not include any introductory or concluding remarks outside the email itself.`;
 
   const userPrompt = `Shopper Profile:
 - Posture: ${profile.posture || 'Not specified'}
 - Dexterity: ${profile.dexterity || 'Not specified'}
 - Sensory Needs: ${(profile.sensory || []).join(', ') || 'None'}
 - Mobility Aids: ${(profile.mobility_aids || []).join(', ') || 'None'}
-- Fit Concerns: ${(profile.fit_concerns || []).join(', ') || 'None'}
-- Additional Context: ${profile.dex_notes || profile.aid_other || 'None'}
 - Body Measurements: ${measureStr}
 
 Garment Details:
 - Name: ${garment.name || 'Garment'}
 - Current Closure: ${garment.closure_type || 'Standard'}
 - Fabric/Stretch: ${garment.fabric || 'Standard'}, ${garment.stretch || 'Standard'}
-- Back Rise: ${garment.back_rise || 'Standard'}
 
-Requested Modifications (from Workshop History):
+Requested Modifications:
 ${modsList || 'No specific modifications logged.'}
 
 Draft the email now.`;
