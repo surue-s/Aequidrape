@@ -566,23 +566,32 @@ function renderGarmentList() {
 
 function selectGarment(id, btn) {
   STATE.garmentId = id;
+  var g = catalog().find(function(p) { return p.id === id; });
   STATE.garment = { base64: null, modifiedUrl: STATE.modifications[id] ? STATE.modifications[id].url : null, custom: false };
   
   document.querySelectorAll('.garment-opt').forEach(function(b) { b.classList.remove('active'); });
   if (btn) btn.classList.add('active');
   
+  // Always show the garment preview when selected
   var prev = document.getElementById('garment-preview');
-  if (STATE.garment.modifiedUrl) {
+  var prevImg = document.getElementById('garment-preview-img');
+  var prevLabel = document.getElementById('garment-preview-label');
+  
+  if (prev && prevImg && g) {
     prev.hidden = false;
-    document.getElementById('garment-preview-img').src = STATE.garment.modifiedUrl;
-    document.getElementById('garment-preview-label').textContent = 'Modified: ' + (STATE.modifications[id] ? STATE.modifications[id].prompt : '');
-  } else {
-    prev.hidden = true;
+    if (STATE.garment.modifiedUrl) {
+      prevImg.src = STATE.garment.modifiedUrl;
+      prevLabel.textContent = 'Modified: ' + (STATE.modifications[id] ? STATE.modifications[id].prompt : '');
+    } else {
+      prevImg.src = '/' + g.image_path;
+      prevLabel.textContent = g.name + ' — ' + g.closure_type;
+    }
   }
+  
   document.getElementById('modify-status').textContent = '';
   renderPressureZones();
 
-  STATE.workshopGarment = catalog().find(function(p) { return p.id === id; });
+  STATE.workshopGarment = g;
   if (STATE.workshopState.garmentId === id && STATE.workshopState.history.length > 0) {
     renderStudioChat();
   } else {
@@ -590,7 +599,6 @@ function selectGarment(id, btn) {
     if (chatPanel) chatPanel.hidden = true;
   }
 }
-
 function onGarmentFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
@@ -1062,11 +1070,17 @@ async function runWorkshopMod() {
   }
 }
 async function generateEmail() {
-  var status = document.getElementById('ws-status');
+  // Use whichever status element is visible (studio or workshop)
+  var status = document.getElementById('ws-status') || document.getElementById('modify-status');
+  if (!status) return;
+
   var history = STATE.workshopState.history || [];
   var garment = STATE.workshopGarment || catalog().find(function(p) { return p.id === STATE.garmentId; });
   
-  if (history.length === 0) { status.textContent = 'Make at least one modification first.'; return; }
+  if (history.length === 0) { 
+    status.textContent = 'Make at least one modification first.'; 
+    return; 
+  }
   
   status.textContent = 'Drafting intelligent email with AI...';
   try {
@@ -1081,14 +1095,28 @@ async function generateEmail() {
     var data = await res.json();
     
     if (res.ok && data.email) {
-      document.getElementById('ws-email-text').value = data.email;
-      document.getElementById('ws-email-output').hidden = false;
+      var emailOutput = document.getElementById('ws-email-output');
+      var emailText = document.getElementById('ws-email-text');
+      if (emailOutput && emailText) {
+        emailText.value = data.email;
+        emailOutput.hidden = false;
+      }
       status.textContent = 'AI Email draft ready.';
     } else {
       status.textContent = 'AI failed: ' + (data.error || 'Unknown error.');
     }
   } catch (e) {
     status.textContent = 'Network error: ' + e.message;
+  }
+}
+
+function copyEmail() {
+  var textarea = document.getElementById('ws-email-text');
+  if (textarea) {
+    textarea.select();
+    document.execCommand('copy');
+    var status = document.getElementById('ws-status');
+    if (status) status.textContent = 'Email copied to clipboard.';
   }
 }
 
