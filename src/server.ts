@@ -161,8 +161,7 @@ Draft the email now.`;
         'X-Title': 'Aequidrape'
       },
       body: JSON.stringify({
-        // Reverted to Llama 3.1 8B Instruct - much better for natural language emails than code-optimized models
-        model: 'meta-llama/llama-3.1-8b-instruct:free',
+        model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }

@@ -30,7 +30,7 @@ const PHOTOS = {
 
 var DEX_MAP = ['standard', 'limited', 'one_handed', 'no_hands'];
 var DEX_LABELS = ['Full use of both hands', 'Limited grip or strength', 'One hand available', 'No hands'];
-
+var BASE_MOD_INSTRUCTIONS = 'Extract the exact garment and Strictly preserve the original garment design, silhouette, colors, and fabric texture. Apply ONLY the specific modification requested. Ensure the result is photorealistic with natural lighting, shadows, and fabric drape. Do not alter, add, or remove any other elements of the garment.';
 /* ---------- Pressure Zone Rules ---------- */
 function getPressureZones(profile, garment) {
   const zones = [];
@@ -406,35 +406,49 @@ function updateProfileBadge() {
 function saveProfile() {
   var f = document.getElementById('profile-form');
   var postureEl = f.querySelector('input[name="posture"]:checked');
-  if (!postureEl) { document.getElementById('profile-status').textContent = 'Choose a posture to continue.'; return; }
+  if (!postureEl) { 
+    document.getElementById('profile-status').textContent = 'Choose a posture to continue.'; 
+    return; 
+  }
 
   var dexEl = f.querySelector('input[name="dexterity"]:checked');
+  
+  // Safe helper to prevent crashes if HTML elements are missing
+  var getMeasure = function(id) {
+    var el = document.getElementById(id);
+    return el ? el.value : null;
+  };
+
+  var getVal = function(id) {
+    var el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+  };
 
   STATE.profile = {
     posture: postureEl.value,
     dexterity: dexEl ? dexEl.value : 'standard',
-    dex_notes: document.getElementById('dex-notes').value.trim(),
+    dex_notes: getVal('dex-notes'),
     sensory: Array.from(f.querySelectorAll('input[name="sensory"]:checked')).map(function(i) { return i.value; }),
     mobility_aids: Array.from(f.querySelectorAll('input[name="mobility_aids"]:checked')).map(function(i) { return i.value; }),
-    aid_other: document.getElementById('aid-other').value.trim(),
+    aid_other: getVal('aid-other'),
     fit_concerns: Array.from(f.querySelectorAll('input[name="fit_concerns"]:checked')).map(function(i) { return i.value; }),
     measurements: {
-      height: document.getElementById('m-height').value || null,
-      neck: document.getElementById('m-neck').value || null,
-      chest: document.getElementById('m-chest').value || null,
-      waist: document.getElementById('m-waist').value || null,
-      hip: document.getElementById('m-hip').value || null,
-      shoulder: document.getElementById('m-shoulder').value || null,
-      arm: document.getElementById('m-arm').value || null,
-      inseam: document.getElementById('m-inseam').value || null
+      height: getMeasure('m-height'),
+      neck: getMeasure('m-neck'),
+      chest: getMeasure('m-chest'),
+      waist: getMeasure('m-waist'),
+      hip: getMeasure('m-hip'),
+      shoulder: getMeasure('m-shoulder'),
+      arm: getMeasure('m-arm'),
+      inseam: getMeasure('m-inseam')
     }
   };
+  
   localStorage.setItem('aequidrape_profile', JSON.stringify(STATE.profile));
   updateProfileBadge();
   renderPressureZones();
   navigateTo('shop');
 }
-
 function applyNeed(kind) {
   if (!STATE.profile) STATE.profile = { posture: 'seated', dexterity: 'standard', sensory: [], mobility_aids: [], fit_concerns: [], dex_notes: '', aid_other: '', measurements: {} };
   if (kind === 'seated') STATE.profile.posture = 'seated';
@@ -617,7 +631,10 @@ async function runModification() {
 
   var easeEl = document.getElementById('ws-ease-purpose');
   var easePurpose = easeEl ? easeEl.value : 'basic';
-  var fullPrompt = prompt + ' (purpose: ' + easePurpose + ')';
+  
+  // Separate UI prompt from AI prompt
+  var displayPrompt = prompt + ' (purpose: ' + easePurpose + ')';
+  var apiPrompt = BASE_MOD_INSTRUCTIONS + ' Modification: ' + prompt + ' (wearing purpose: ' + easePurpose + ')';
 
   status.textContent = 'Modifying garment... Please wait.';
   var modBtn = document.querySelector('.studio-panel.right .ai-input-wrapper button:last-child');
@@ -629,7 +646,7 @@ async function runModification() {
     chatPanel.hidden = false;
     var userMsg = document.createElement('div');
     userMsg.className = 'chat-msg user';
-    userMsg.textContent = fullPrompt;
+    userMsg.textContent = displayPrompt; // Show clean prompt in chat
     chatBody.appendChild(userMsg);
     chatBody.scrollTop = chatBody.scrollHeight;
   }
@@ -639,18 +656,18 @@ async function runModification() {
   try {
     var res = await fetch('/api/modify-image', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_base64: base64, prompt: fullPrompt }),
+      body: JSON.stringify({ image_base64: base64, prompt: apiPrompt }), // Send strict prompt to AI
     });
     var data = await res.json();
     if (data.url) {
       if (STATE.garmentId) {
-        STATE.modifications[STATE.garmentId] = { prompt: fullPrompt, url: data.url };
+        STATE.modifications[STATE.garmentId] = { prompt: displayPrompt, url: data.url };
         localStorage.setItem('aequidrape_mods', JSON.stringify(STATE.modifications));
         renderGarmentList();
       }
 
       STATE.workshopState.garmentId = STATE.garmentId;
-      STATE.workshopState.history.push({ prompt: fullPrompt, imageUrl: data.url });
+      STATE.workshopState.history.push({ prompt: displayPrompt, imageUrl: data.url });
       STATE.workshopState.currentImageUrl = data.url;
       localStorage.setItem('aequidrape_workshop', JSON.stringify(STATE.workshopState));
 
@@ -660,13 +677,13 @@ async function runModification() {
       var prev = document.getElementById('garment-preview');
       prev.hidden = false;
       document.getElementById('garment-preview-img').src = data.url;
-      document.getElementById('garment-preview-label').textContent = 'Modified: ' + fullPrompt;
+      document.getElementById('garment-preview-label').textContent = 'Modified: ' + displayPrompt;
       status.textContent = 'Garment modified. Ready for try-on.';
 
       if (chatBody) {
         var aiMsg = document.createElement('div');
         aiMsg.className = 'chat-msg ai';
-        aiMsg.innerHTML = '<strong>Applied:</strong> ' + fullPrompt + '<br/><img src="' + data.url + '" alt="Modified" />';
+        aiMsg.innerHTML = '<strong>Applied:</strong> ' + displayPrompt + '<br/><img src="' + data.url + '" alt="Modified" />';
         chatBody.appendChild(aiMsg);
         chatBody.scrollTop = chatBody.scrollHeight;
       }
@@ -969,7 +986,10 @@ async function runWorkshopMod() {
 
   var easeEl = document.getElementById('ws-ease-purpose');
   var easePurpose = easeEl ? easeEl.value : 'basic';
-  var fullPrompt = prompt + ' (wearing purpose: ' + easePurpose + ')';
+  
+  // Separate UI prompt from AI prompt
+  var displayPrompt = prompt + ' (wearing purpose: ' + easePurpose + ')';
+  var apiPrompt = BASE_MOD_INSTRUCTIONS + ' Modification: ' + prompt + ' (wearing purpose: ' + easePurpose + ')';
   
   var currentImg = document.getElementById('ws-current').src;
   var base64 = await toBase64(currentImg);
@@ -982,7 +1002,7 @@ async function runWorkshopMod() {
   
   var userMsg = document.createElement('div');
   userMsg.className = 'chat-msg user';
-  userMsg.textContent = fullPrompt;
+  userMsg.textContent = displayPrompt; // Show clean prompt in chat
   chatBody.appendChild(userMsg);
   chatBody.scrollTop = chatBody.scrollHeight;
   
@@ -991,26 +1011,26 @@ async function runWorkshopMod() {
   try {
     var res = await fetch('/api/modify-image', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_base64: base64, prompt: fullPrompt }),
+      body: JSON.stringify({ image_base64: base64, prompt: apiPrompt }), // Send strict prompt to AI
     });
     var data = await res.json();
     if (data.url) {
-      STATE.workshopHistory.push({ prompt: fullPrompt, imageUrl: data.url });
+      STATE.workshopHistory.push({ prompt: displayPrompt, imageUrl: data.url });
       
-      STATE.workshopState.history.push({ prompt: fullPrompt, imageUrl: data.url });
+      STATE.workshopState.history.push({ prompt: displayPrompt, imageUrl: data.url });
       STATE.workshopState.currentImageUrl = data.url;
       localStorage.setItem('aequidrape_workshop', JSON.stringify(STATE.workshopState));
       
       document.getElementById('ws-current').src = data.url;
       
       if (STATE.workshopGarment) {
-        STATE.modifications[STATE.workshopGarment.id] = { prompt: fullPrompt, url: data.url };
+        STATE.modifications[STATE.workshopGarment.id] = { prompt: displayPrompt, url: data.url };
         localStorage.setItem('aequidrape_mods', JSON.stringify(STATE.modifications));
       }
       
       var aiMsg = document.createElement('div');
       aiMsg.className = 'chat-msg ai';
-      aiMsg.innerHTML = '<strong>Adaptation Applied:</strong> ' + fullPrompt + '<br/><img src="' + data.url + '" alt="Modified" />';
+      aiMsg.innerHTML = '<strong>Adaptation Applied:</strong> ' + displayPrompt + '<br/><img src="' + data.url + '" alt="Modified" />';
       chatBody.appendChild(aiMsg);
       chatBody.scrollTop = chatBody.scrollHeight;
       
@@ -1024,7 +1044,6 @@ async function runWorkshopMod() {
     if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Apply Change'; }
   }
 }
-
 async function generateEmail() {
   var status = document.getElementById('ws-status');
   var history = STATE.workshopState.history || [];
