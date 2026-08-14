@@ -32,3 +32,5 @@ coverage/
 docs/
 docs/*.tmp
 docs/*.bak
+
+public/vto-cache/
