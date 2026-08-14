@@ -929,3 +929,8 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; }
   color: var(--accent);
   font-weight: 600;
 }
+
+.mic-btn svg {
+  width: 20px;
+  height: 20px;
+}
