@@ -172,12 +172,21 @@
                 </div>
                 <div class="chat-body-compact" id="studio-chat-body"></div>
               </div>
-
-              <!-- Email output -->
-              <div class="chat-email" id="ws-email-output" hidden>
-                 <h4>Advocate Email Draft</h4>
-                 <textarea id="ws-email-text" readonly></textarea>
-              </div>
+              
+            <!-- Email output (editable) -->
+            <div class="chat-email" id="ws-email-output" hidden>
+               <h4>Advocate Email Draft</h4>
+               <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+                 <button class="btn-ghost-pill" style="padding:6px 12px; font-size:12px;" onclick="copyEmail()">Copy</button>
+                 <button class="btn-dark" style="padding:6px 16px; font-size:12px;" onclick="sendEmailToSeller()">
+                   Send to Seller
+                   <span class="arr" style="width:24px; height:24px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:12px; height:12px;"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span>
+                 </button>
+                 <button class="btn-ghost-pill" style="padding:6px 12px; font-size:12px;" onclick="document.getElementById('ws-email-output').hidden = true;">Close</button>
+               </div>
+               <textarea id="ws-email-text" placeholder="Your email draft will appear here. You can edit it before sending."></textarea>
+               <p class="studio-status" id="email-send-status" style="margin-top:6px;"></p>
+            </div>
 
               <!-- ADAPT -->
               <p class="step-label" style="margin-top:24px"><b>+</b> Adapt it</p>
