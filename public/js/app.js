@@ -1120,6 +1120,29 @@ function copyEmail() {
   }
 }
 
+function sendEmailToSeller() {
+  var status = document.getElementById('email-send-status');
+  var textarea = document.getElementById('ws-email-text');
+  if (!textarea || !textarea.value.trim()) {
+    if (status) status.textContent = 'No email content to send.';
+    return;
+  }
+
+  // Simulate sending with a brief delay for demo effect
+  if (status) status.textContent = 'Sending email...';
+  
+  setTimeout(function() {
+    if (status) {
+      status.textContent = 'Email sent successfully! The seller will review your modification request and respond within 2-3 business days.';
+      status.style.color = 'var(--ok)';
+    }
+    // Reset color after 4 seconds
+    setTimeout(function() {
+      if (status) status.style.color = '';
+    }, 4000);
+  }, 1200);
+}
+
 function tryOnThis() {
   if (STATE.current) {
     if (STATE.cart.indexOf(STATE.current.id) === -1) addToCart(STATE.current.id);

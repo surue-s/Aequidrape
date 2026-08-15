@@ -989,3 +989,25 @@ footer { background: var(--ink); color: #fff; padding: 88px 0 40px; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Editable email textarea */
+.chat-email textarea {
+  width: 100%;
+  min-height: 180px;
+  max-height: 400px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-s);
+  padding: 14px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  color: var(--ink);
+  cursor: text;
+}
+.chat-email textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--accent);
+}
