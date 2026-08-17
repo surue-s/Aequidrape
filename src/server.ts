@@ -3,26 +3,34 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { runClothesVTO, modifyGarmentImage } from './youcam';
 
+// 1. ENV & DATA LOADING
+const envPath = path.join(process.cwd(), '.env');
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq > 0) process.env[trimmed.slice(0, eq)] = trimmed.slice(eq + 1);
+  }
+}
+
+const garmentsPath = path.join(process.cwd(), 'data', 'garments.json');
+let garments: any[] = [];
+try { 
+  if (fs.existsSync(garmentsPath)) {
+    garments = JSON.parse(fs.readFileSync(garmentsPath, 'utf8')); 
+  }
+} catch (e) { 
+  console.warn('[server] Could not load garments.json'); 
+}
+
+// 2. EXPRESS SETUP
 const app = express();
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Load garments safely
-let garments: any[] = [];
-try {
-  const garmentsPath = path.join(process.cwd(), 'data', 'garments.json');
-  if (fs.existsSync(garmentsPath)) {
-    garments = JSON.parse(fs.readFileSync(garmentsPath, 'utf8'));
-  }
-} catch (e) {
-  console.warn('[server] Could not load garments.json');
-}
-
-const PORT = parseInt(process.env.PORT || '3000', 10);
-
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Serve static frontend files from the public directory
 app.use(express.static(path.join(process.cwd(), 'public')));
 
 // 3. ROUTES
@@ -38,7 +46,6 @@ app.post('/api/evaluate', (req, res) => {
 
   const ok: string[] = [], warn: string[] = [], ask: string[] = [];
   
-  // Updated to include 'no_hands' and check for adaptive closures
   if ((profile.dexterity === 'limited' || profile.dexterity === 'one_handed' || profile.dexterity === 'no_hands') && /magnetic|hook|zipper|velcro|pullover/i.test(garment.closure_type || '')) {
     ok.push(`${garment.closure_type} closure supports easier dressing.`);
   }
@@ -104,7 +111,6 @@ app.post('/api/generate-email', async (req, res) => {
 
   const modsList = history.map((h: any, i: number) => `${i + 1}. ${h.prompt}`).join('\n');
   
-  // Extract and format body measurements for the AI prompt
   const measurements = profile.measurements || {};
   const measureStr = [
     measurements.height ? 'Height: ' + measurements.height + 'cm' : '',
@@ -160,7 +166,7 @@ Draft the email now.`;
         'X-Title': 'Aequidrape'
       },
       body: JSON.stringify({
-        model: MODEL, // Using the dynamic MODEL variable from headers or fallback
+        model: MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -192,9 +198,10 @@ Draft the email now.`;
   }
 });
 
-// Clear VTO Cache endpoint for the Settings page
 app.post('/api/clear-cache', (_req, res) => {
-  const cacheDir = path.join(process.cwd(), 'public', 'vto-cache');
+  const cacheDir = process.env.VERCEL 
+    ? path.join('/tmp', 'vto-cache') 
+    : path.join(process.cwd(), 'public', 'vto-cache');
   try {
     if (fs.existsSync(cacheDir)) {
       fs.readdirSync(cacheDir).forEach(file => {
@@ -207,9 +214,6 @@ app.post('/api/clear-cache', (_req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
-// Serve static frontend files from the public directory
-app.use(express.static(path.join(process.cwd(), 'public')));
 
 // Serve cached VTO images from /tmp in production, or public/ locally
 app.get('/vto-cache/:filename', (req, res) => {
@@ -240,10 +244,5 @@ app.use((err: any, _req: any, res: any, _next: any) => {
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-// Vercel handles listening automatically. 
-// For Render or local, we must start the server manually.
-if (!process.env.VERCEL) {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => console.log(`[server] Running on port ${PORT}`));
-}
+// Export for Vercel serverless execution
 export default app;

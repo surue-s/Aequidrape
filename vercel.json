@@ -2,6 +2,7 @@
   "version": 2,
   "functions": {
     "src/server.ts": {
+      "maxDuration": 60,
       "includeFiles": "public/**,data/**"
     }
   },
