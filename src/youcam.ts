@@ -29,8 +29,7 @@ if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 console.log('[youcam] API key ' + (getApiKey() ? 'loaded' : 'MISSING'));
 
 async function uploadImage(buffer: Buffer, filename: string): Promise<string> {
-  const blob = new Blob([buffer], { type: 'image/jpeg' });
-
+const blob = new Blob([new Uint8Array(buffer)], { type: 'image/jpeg' });
   // 1. Telegraph (Primary)
   try {
     console.log('[upload] Trying telegra.ph...');
