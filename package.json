@@ -2,12 +2,15 @@
   "name": "aequidrape",
   "version": "1.0.0",
   "description": "AccessFit: Adaptive clothing fit decision layer for disabled shoppers",
-  "main": "src/index.ts",
+  "main": "src/server.ts",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "tsx src/index.ts",
+    "test": "tsx src/server.ts",
     "start": "node dist/server.js"
   },
   "dependencies": {
@@ -17,6 +20,7 @@
   "devDependencies": {
     "@types/express": "^4.17.17",
     "@types/node": "^20.8.0",
+    "@vercel/node": "^3.0.0",
     "tsx": "^3.14.0",
     "typescript": "^5.2.2"
   },

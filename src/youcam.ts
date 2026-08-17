@@ -1,10 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { execSync } from 'child_process';
-import os from 'os';
 
-// .env loader
+// .env loader (safe for serverless where process.env is already populated by Vercel)
 const envPath = path.join(process.cwd(), '.env');
 if (fs.existsSync(envPath)) {
   for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
@@ -31,53 +29,49 @@ if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 console.log('[youcam] API key ' + (getApiKey() ? 'loaded' : 'MISSING'));
 
 async function uploadImage(buffer: Buffer, filename: string): Promise<string> {
-  const tmpDir = os.tmpdir();
-  const tmpFile = path.join(tmpDir, 'aequidrape_' + Date.now() + '_' + filename);
-  fs.writeFileSync(tmpFile, buffer);
-  const ua = 'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0';
-
-  const cleanup = () => { try { fs.unlinkSync(tmpFile); } catch {} };
+  const blob = new Blob([buffer], { type: 'image/jpeg' });
 
   // 1. Telegraph (Primary)
   try {
     console.log('[upload] Trying telegra.ph...');
-    const res = execSync(
-      'curl -s -X POST -F "file=@' + tmpFile + '" -A "' + ua + '" https://telegra.ph/upload',
-      { encoding: 'utf8', timeout: 30000 }
-    ).trim();
-
-    const data = JSON.parse(res);
+    const formData = new FormData();
+    formData.append('file', blob, filename);
+    
+    const res = await fetch('https://telegra.ph/upload', {
+      method: 'POST',
+      body: formData,
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    const data = await res.json();
     if (data?.[0]?.src) {
-      const url = 'https://telegra.ph' + data[0].src;
       console.log('[upload] Success via telegra.ph');
-      cleanup();
-      return url;
+      return 'https://telegra.ph' + data[0].src;
     }
-    console.log('[upload] telegra.ph unexpected response:', res.slice(0, 100));
+    console.log('[upload] telegra.ph unexpected response:', JSON.stringify(data).slice(0, 100));
   } catch (e: any) {
-    console.log('[upload] telegra.ph curl error:', e.message);
+    console.log('[upload] telegra.ph error:', e.message);
   }
 
   // 2. uguu.se (Fallback)
   try {
     console.log('[upload] Trying uguu.se...');
-    const res = execSync(
-      'curl -s -F "files[]=@' + tmpFile + '" -A "' + ua + '" https://uguu.se/upload',
-      { encoding: 'utf8', timeout: 30000 }
-    ).trim();
-
-    const data = JSON.parse(res);
-    if (data?.success === true && data?.files?.[0]?.url) {
-      const url = data.files[0].url;
+    const formData2 = new FormData();
+    formData2.append('files[]', blob, filename);
+    
+    const res2 = await fetch('https://uguu.se/upload', {
+      method: 'POST',
+      body: formData2,
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    const data2 = await res2.json();
+    if (data2?.success === true && data2?.files?.[0]?.url) {
       console.log('[upload] Success via uguu.se');
-      cleanup();
-      return url;
+      return data2.files[0].url;
     }
   } catch (e: any) {
     console.log('[upload] uguu.se error:', e.message);
   }
 
-  cleanup();
   throw new Error('All image hosts failed. Check server logs.');
 }
 
@@ -142,12 +136,14 @@ export async function runClothesVTO(personBuffer: Buffer, garmentBuffer: Buffer 
   if (!API_KEY) throw new Error('Missing API Key');
 
   const personUrl = await uploadImage(personBuffer, 'person.jpg');
-
   let garmentUrlFinal = garmentUrl;
 
   // CRITICAL FIX: If garmentUrl is a local path (e.g., from our cache), read it and upload to a public host
   if (garmentUrlFinal && garmentUrlFinal.startsWith('/')) {
-    const localPath = path.join(process.cwd(), 'public', garmentUrlFinal);
+    const localPath = process.env.VERCEL 
+      ? path.join('/tmp', garmentUrlFinal) 
+      : path.join(process.cwd(), 'public', garmentUrlFinal);
+      
     if (fs.existsSync(localPath)) {
       console.log('[VTO] Local garment detected, uploading to public host...');
       const localBuffer = fs.readFileSync(localPath);
@@ -166,6 +162,7 @@ export async function runClothesVTO(personBuffer: Buffer, garmentBuffer: Buffer 
   const hash = crypto.createHash('md5').update(personUrl).update(garmentUrlFinal).digest('hex');
   const cacheFile = path.join(CACHE_DIR, hash + '.json');
   const cachedLocalFile = path.join(CACHE_DIR, hash + '.jpg');
+  
   try {
     const c = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
     if (c.url && fs.existsSync(cachedLocalFile)) {
