@@ -1,11 +1,11 @@
 {
   "name": "aequidrape",
   "version": "1.0.0",
-  "description": "Aequidrape: Adaptive clothing fit decision layer for disabled shoppers",
+  "description": "AccessFit: Adaptive clothing fit decision layer for disabled shoppers",
   "main": "src/server.ts",
   "type": "module",
   "engines": {
-    "node": "18.x"
+    "node": ">=18.0.0"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
