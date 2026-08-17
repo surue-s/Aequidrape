@@ -210,10 +210,29 @@ app.post('/api/clear-cache', (_req, res) => {
   }
 });
 
+// Serve cached VTO images from /tmp in production, or public/ locally
+app.get('/vto-cache/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = process.env.VERCEL 
+    ? path.join('/tmp', 'vto-cache', filename)
+    : path.join(process.cwd(), 'public', 'vto-cache', filename);
+    
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('Image not found in cache');
+  }
+});
+
 app.get('*', (_req, res) => {
   const index = path.join(process.cwd(), 'public', 'index.html');
   if (fs.existsSync(index)) return res.sendFile(index);
   res.status(404).send('Not found');
 });
 
-app.listen(PORT, () => console.log(`[server] Running at http://localhost:${PORT} with ${garments.length} garments`));
+// Only listen locally. Vercel handles the serverless execution.
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => console.log(`[server] Running locally at http://localhost:${PORT}`));
+}
+
+export default app;
