@@ -21,6 +21,16 @@ const STATE = {
   recognition: null
 };
 
+async function parseResponse(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error('Server returned non-JSON:', text);
+    throw new Error('Server error. Check Vercel logs. (Response was not JSON)');
+  }
+}
+
 const PHOTOS = {
   standing: '/demo-images/01-standing-original.jpg',
   seated: '/demo-images/02-seated-original.jpg',
@@ -727,7 +737,7 @@ async function runModification() {
       method: 'POST', headers: getApiHeaders(),
       body: JSON.stringify({ image_base64: base64, prompt: apiPrompt }),
     });
-    var data = await res.json();
+    var data = await parseResponse(res);
     if (data.url) {
       if (STATE.garmentId) {
         STATE.modifications[STATE.garmentId] = { prompt: displayPrompt, url: data.url };
@@ -1153,7 +1163,7 @@ async function generateEmail() {
         history: history
       })
     });
-    var data = await res.json();
+    var data = await parseResponse(res);
     
     if (res.ok && data.email) {
       var emailOutput = document.getElementById('ws-email-output');

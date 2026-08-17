@@ -220,4 +220,16 @@ app.get('/vto-cache/:filename', (req, res) => {
     res.status(404).send('Image not found in cache');
   }
 });
+
+// Catch-all for unmatched API routes
+app.use('/api/*', (_req, res) => {
+  res.status(404).json({ error: 'API route not found' });
+});
+
+// Global error handler - guarantees ALL crashes return JSON
+app.use((err: any, _req: any, res: any, _next: any) => {
+  console.error('[server] Unhandled error:', err);
+  res.status(500).json({ error: err.message || 'Internal server error' });
+});
+
 export default app;
