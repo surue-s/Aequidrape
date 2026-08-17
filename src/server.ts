@@ -1,8 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import { runClothesVTO, modifyGarmentImage } from './youcam';
-
+import { runClothesVTO, modifyGarmentImage } from './youcam.js';
 // 1. ENV & DATA LOADING
 const envPath = path.join(process.cwd(), '.env');
 if (fs.existsSync(envPath)) {
