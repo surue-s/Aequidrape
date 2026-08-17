@@ -23,7 +23,10 @@ function getApiKey(): string { return process.env.YOUCAM_API_KEY || ''; }
 
 const VTO_URL = 'https://yce-api-01.makeupar.com/s2s/v3.0/task/cloth';
 const EDIT_URL = 'https://yce-api-01.makeupar.com/s2s/v2.0/task/image-to-image/youcam';
-const CACHE_DIR = path.join(process.cwd(), 'public', 'vto-cache');
+const CACHE_DIR = process.env.VERCEL 
+  ? path.join('/tmp', 'vto-cache') 
+  : path.join(process.cwd(), 'public', 'vto-cache');
+  
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 console.log('[youcam] API key ' + (getApiKey() ? 'loaded' : 'MISSING'));
 
