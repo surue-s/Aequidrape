@@ -208,6 +208,10 @@ app.post('/api/clear-cache', (_req, res) => {
   }
 });
 
+// Serve static frontend files from the public directory
+app.use(express.static(path.join(process.cwd(), 'public')));
+
+// Serve cached VTO images from /tmp in production, or public/ locally
 app.get('/vto-cache/:filename', (req, res) => {
   const filename = req.params.filename;
   const filePath = process.env.VERCEL 
@@ -217,13 +221,17 @@ app.get('/vto-cache/:filename', (req, res) => {
   if (fs.existsSync(filePath)) {
     res.sendFile(filePath);
   } else {
-    res.status(404).send('Image not found in cache');
+    res.status(404).json({ error: 'Image not found in cache' });
   }
 });
 
-// Catch-all for unmatched API routes
-app.use('/api/*', (_req, res) => {
-  res.status(404).json({ error: 'API route not found' });
+// Catch-all route: Serve index.html for any non-API route (SPA fallback)
+app.get('*', (_req, res) => {
+  const index = path.join(process.cwd(), 'public', 'index.html');
+  if (fs.existsSync(index)) {
+    return res.sendFile(index);
+  }
+  res.status(404).json({ error: 'Frontend not found' });
 });
 
 // Global error handler - guarantees ALL crashes return JSON
@@ -232,4 +240,5 @@ app.use((err: any, _req: any, res: any, _next: any) => {
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
+// Export for Vercel
 export default app;
