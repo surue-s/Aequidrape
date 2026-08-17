@@ -216,4 +216,4 @@ app.get('*', (_req, res) => {
   res.status(404).send('Not found');
 });
 
-app.listen(PORT, () => console.log(`[server] Running at http://localhost:${PORT} with ${garments.length
+app.listen(PORT, () => console.log(`[server] Running at http://localhost:${PORT} with ${garments.length} garments`));
