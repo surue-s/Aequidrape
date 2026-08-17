@@ -49,6 +49,8 @@
         <a href="#shop" onclick="navigateTo('shop')">Shop</a>
         <a href="#workshop" onclick="navigateToWorkshop()">Workshop</a>
         <a href="#profile" onclick="navigateTo('profile')">Fit Profile</a>
+        <a href="#settings" onclick="navigateTo('settings')">Settings</a>
+        
       </nav>
       <div class="head-actions">
         <button class="nav-toggle" onclick="toggleMobNav()" aria-label="Toggle menu"><span></span><span></span></button>
@@ -515,6 +517,79 @@
                <textarea id="ws-email-text" readonly></textarea>
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+
+        <!-- SETTINGS -->
+    <section id="settings-page" class="page">
+      <div class="container profile">
+        <div class="profile-wrap" style="max-width: 720px;">
+          <span class="eyebrow">Configuration</span>
+          <h1 class="h-section" style="margin:14px 0 8px">API Settings</h1>
+          <p class="lede" style="margin-bottom:36px">Configure your API keys and model preferences. Keys are stored locally in your browser and never sent to any third party.</p>
+
+          <form id="settings-form" onsubmit="return false;">
+            <div class="form-block">
+              <h3>YouCam API</h3>
+              <p>Used for Virtual Try-On and Garment Image Editing.</p>
+              <div class="measurements-grid" style="grid-template-columns: 1fr;">
+                <div class="measure-item">
+                  <label for="set-youcam-key">API Key</label>
+                  <input type="password" id="set-youcam-key" placeholder="sk-XXD..." />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-block">
+              <h3>OpenRouter API</h3>
+              <p>Used for AI email drafting. Get a free key at openrouter.ai/keys.</p>
+              <div class="measurements-grid" style="grid-template-columns: 1fr 1fr;">
+                <div class="measure-item">
+                  <label for="set-openrouter-key">API Key</label>
+                  <input type="password" id="set-openrouter-key" placeholder="sk-or-v1-..." />
+                </div>
+                <div class="measure-item">
+                  <label for="set-model">Model</label>
+                  <select id="set-model" style="border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:14px; background:var(--surface); color:var(--ink);">
+                    <option value="nvidia/nemotron-3-ultra-550b-a55b:free">NVIDIA Nemotron 3 Ultra 550B (free)</option>
+                    <option value="meta-llama/llama-3.1-8b-instruct:free">Llama 3.1 8B Instruct (free)</option>
+                    <option value="google/gemma-2-9b-it:free">Gemma 2 9B Instruct (free)</option>
+                    <option value="mistralai/mistral-7b-instruct:free">Mistral 7B Instruct (free)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-block">
+              <h3>Image Hosting</h3>
+              <p>Used to upload images for YouCam processing.</p>
+              <div class="measurements-grid" style="grid-template-columns: 1fr;">
+                <div class="measure-item">
+                  <label for="set-image-host">Preferred Host</label>
+                  <select id="set-image-host" style="border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:14px; background:var(--surface); color:var(--ink);">
+                    <option value="telegraph">telegra.ph (recommended)</option>
+                    <option value="uguu">uguu.se (fallback)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-block">
+              <h3>Danger Zone</h3>
+              <p>Clear all cached data and API responses.</p>
+              <button type="button" class="btn-ghost-pill" style="border-color:var(--risk); color:var(--risk);" onclick="clearAllCache()">Clear All Cache</button>
+            </div>
+
+            <div style="display:flex; gap:14px; justify-content:flex-end; margin-top:40px">
+              <button type="button" class="btn-ghost-pill" onclick="navigateTo('home')">Cancel</button>
+              <button type="button" class="btn-dark" onclick="saveSettings()">
+                Save Settings
+                <span class="arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></span>
+              </button>
+            </div>
+            <p class="studio-status" id="settings-status"></p>
+          </form>
         </div>
       </div>
     </section>

@@ -204,6 +204,66 @@ function navigateToWorkshop() {
   }, 100);
 }
 
+/* ---------- Settings ---------- */
+function loadSettings() {
+  var settings = JSON.parse(localStorage.getItem('aequidrape_settings') || '{}');
+  return {
+    youcamKey: settings.youcamKey || '',
+    openrouterKey: settings.openrouterKey || '',
+    model: settings.model || 'nvidia/nemotron-3-ultra-550b-a55b:free',
+    imageHost: settings.imageHost || 'telegraph'
+  };
+}
+
+function saveSettings() {
+  var settings = {
+    youcamKey: document.getElementById('set-youcam-key').value.trim(),
+    openrouterKey: document.getElementById('set-openrouter-key').value.trim(),
+    model: document.getElementById('set-model').value,
+    imageHost: document.getElementById('set-image-host').value
+  };
+  localStorage.setItem('aequidrape_settings', JSON.stringify(settings));
+  
+  var status = document.getElementById('settings-status');
+  if (status) status.textContent = 'Settings saved successfully.';
+  setTimeout(function() { if (status) status.textContent = ''; }, 3000);
+}
+
+function populateSettingsForm() {
+  var settings = loadSettings();
+  var youcamInput = document.getElementById('set-youcam-key');
+  var orInput = document.getElementById('set-openrouter-key');
+  var modelSelect = document.getElementById('set-model');
+  var hostSelect = document.getElementById('set-image-host');
+  
+  if (youcamInput) youcamInput.value = settings.youcamKey;
+  if (orInput) orInput.value = settings.openrouterKey;
+  if (modelSelect) modelSelect.value = settings.model;
+  if (hostSelect) hostSelect.value = settings.imageHost;
+}
+
+function clearAllCache() {
+  if (!confirm('Clear all cached data? This removes try-on results, modifications, and workshop history.')) return;
+  
+  localStorage.removeItem('aequidrape_profile');
+  localStorage.removeItem('aequidrape_cart');
+  localStorage.removeItem('aequidrape_mods');
+  localStorage.removeItem('aequidrape_workshop');
+  
+  // Clear server-side VTO cache
+  fetch('/api/clear-cache', { method: 'POST' }).catch(function() {});
+  
+  location.reload();
+}
+
+function getApiHeaders() {
+  var settings = loadSettings();
+  var headers = { 'Content-Type': 'application/json' };
+  if (settings.youcamKey) headers['X-YouCam-Key'] = settings.youcamKey;
+  if (settings.openrouterKey) headers['X-OpenRouter-Key'] = settings.openrouterKey;
+  if (settings.model) headers['X-Model'] = settings.model;
+  return headers;
+}
 function toggleVoiceInput(inputId, btnId) {
   var input = document.getElementById(inputId);
   var micBtn = document.getElementById(btnId);
@@ -384,6 +444,7 @@ function navigateTo(page) {
   document.body.classList.remove('nav-open');
   if (page === 'shop') renderProducts();
   if (page === 'home') renderProducts('featured-products', catalog().slice(0, 4));
+  if (page === 'settings') populateSettingsForm();
   if (window.AOS) AOS.refresh();
 }
 
@@ -663,8 +724,8 @@ async function runModification() {
 
   try {
     var res = await fetch('/api/modify-image', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_base64: base64, prompt: apiPrompt }), // Send strict prompt to AI
+      method: 'POST', headers: getApiHeaders(),
+      body: JSON.stringify({ image_base64: base64, prompt: apiPrompt }),
     });
     var data = await res.json();
     if (data.url) {
@@ -796,7 +857,7 @@ async function runTryOn() {
     }
 
     // PHASE 3: Send to VTO
-    const res = await fetch('/api/try-on', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await fetch('/api/try-on', { method: 'POST', headers: getApiHeaders(), body: JSON.stringify(payload) });
     const data = await res.json();
     
     if (data.url) {
@@ -1084,8 +1145,8 @@ async function generateEmail() {
   
   status.textContent = 'Drafting intelligent email with AI...';
   try {
-    var res = await fetch('/api/generate-email', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+        var res = await fetch('/api/generate-email', {
+      method: 'POST', headers: getApiHeaders(),
       body: JSON.stringify({
         profile: STATE.profile || {},
         garment: garment || {},

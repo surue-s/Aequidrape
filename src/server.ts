@@ -97,10 +97,11 @@ app.post('/api/generate-email', async (req, res) => {
   const profile = req.body.profile || {};
   const garment = req.body.garment || {};
   const history = req.body.history || [];
-  const OR_KEY = process.env.OPENROUTER_API_KEY;
+  const OR_KEY = (req.headers['x-openrouter-key'] as string) || process.env.OPENROUTER_API_KEY;
+  const MODEL = (req.headers['x-model'] as string) || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 
   if (!OR_KEY || OR_KEY === 'sk-or-v1-your-key-here') {
-    return res.status(400).json({ error: 'Missing valid OPENROUTER_API_KEY in .env' });
+    return res.status(400).json({ error: 'Missing valid OPENROUTER_API_KEY. Please set it in the Settings page or .env file.' });
   }
 
   const modsList = history.map((h: any, i: number) => `${i + 1}. ${h.prompt}`).join('\n');
@@ -118,7 +119,7 @@ app.post('/api/generate-email', async (req, res) => {
     measurements.inseam ? 'Inseam/Leg: ' + measurements.inseam + 'cm' : ''
   ].filter(Boolean).join(', ') || 'Not provided';
 
-    const systemPrompt = `You are an adaptive fashion advocate writing a professional inquiry email to a clothing brand on behalf of a disabled shopper.
+  const systemPrompt = `You are an adaptive fashion advocate writing a professional inquiry email to a clothing brand on behalf of a disabled shopper.
 
 Write a clear, concise email (under 200 words) that:
 1. Briefly introduces the shopper's needs (posture, dexterity, mobility aids) without oversharing medical details
@@ -161,7 +162,7 @@ Draft the email now.`;
         'X-Title': 'Aequidrape'
       },
       body: JSON.stringify({
-        model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+        model: MODEL, // Using the dynamic MODEL variable from headers or fallback
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -193,10 +194,26 @@ Draft the email now.`;
   }
 });
 
+// Clear VTO Cache endpoint for the Settings page
+app.post('/api/clear-cache', (_req, res) => {
+  const cacheDir = path.join(process.cwd(), 'public', 'vto-cache');
+  try {
+    if (fs.existsSync(cacheDir)) {
+      fs.readdirSync(cacheDir).forEach(file => {
+        fs.unlinkSync(path.join(cacheDir, file));
+      });
+    }
+    res.json({ status: 'ok', message: 'Cache cleared' });
+  } catch (e: any) {
+    console.error('[cache] error clearing cache:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('*', (_req, res) => {
   const index = path.join(process.cwd(), 'public', 'index.html');
   if (fs.existsSync(index)) return res.sendFile(index);
   res.status(404).send('Not found');
 });
 
-app.listen(PORT, () => console.log(`[server] Running at http://localhost:${PORT} with ${garments.length} garments`));
+app.listen(PORT, () => console.log(`[server] Running at http://localhost:${PORT} with ${garments.length
