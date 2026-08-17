@@ -240,5 +240,10 @@ app.use((err: any, _req: any, res: any, _next: any) => {
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-// Export for Vercel
+// Vercel handles listening automatically. 
+// For Render or local, we must start the server manually.
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log(`[server] Running on port ${PORT}`));
+}
 export default app;

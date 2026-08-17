@@ -20,6 +20,10 @@ const STATE = {
   isListening: false,
   recognition: null
 };
+// Point API calls to Render backend if deployed, otherwise use local
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+  ? '' 
+  : 'https://aequidrape-api.onrender.com'; // Replace with your actual Render URL
 
 async function parseResponse(res) {
   const text = await res.text();
