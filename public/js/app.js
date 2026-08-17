@@ -1144,7 +1144,7 @@ async function generateEmail() {
   // Use whichever status element is visible (studio or workshop)
   var status = document.getElementById('ws-status') || document.getElementById('modify-status');
   if (!status) return;
-
+  //tests
   var history = STATE.workshopState.history || [];
   var garment = STATE.workshopGarment || catalog().find(function(p) { return p.id === STATE.garmentId; });
   
