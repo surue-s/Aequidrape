@@ -3,24 +3,22 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { runClothesVTO, modifyGarmentImage } from './youcam';
 
-// 1. ENV & DATA LOADING
-const envPath = path.join(process.cwd(), '.env');
-if (fs.existsSync(envPath)) {
-  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq > 0) process.env[trimmed.slice(0, eq)] = trimmed.slice(eq + 1);
+const app = express();
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Load garments safely
+let garments: any[] = [];
+try {
+  const garmentsPath = path.join(process.cwd(), 'data', 'garments.json');
+  if (fs.existsSync(garmentsPath)) {
+    garments = JSON.parse(fs.readFileSync(garmentsPath, 'utf8'));
   }
+} catch (e) {
+  console.warn('[server] Could not load garments.json');
 }
 
-const garmentsPath = path.join(process.cwd(), 'data', 'garments.json');
-let garments: any[] = [];
-try { garments = JSON.parse(fs.readFileSync(garmentsPath, 'utf8')); }
-catch (e) { console.warn('[server] Could not load garments.json'); }
-
-// 2. EXPRESS SETUP
-const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 app.use(express.json({ limit: '50mb' }));
@@ -210,7 +208,6 @@ app.post('/api/clear-cache', (_req, res) => {
   }
 });
 
-// Serve cached VTO images from /tmp in production, or public/ locally
 app.get('/vto-cache/:filename', (req, res) => {
   const filename = req.params.filename;
   const filePath = process.env.VERCEL 
@@ -223,16 +220,4 @@ app.get('/vto-cache/:filename', (req, res) => {
     res.status(404).send('Image not found in cache');
   }
 });
-
-app.get('*', (_req, res) => {
-  const index = path.join(process.cwd(), 'public', 'index.html');
-  if (fs.existsSync(index)) return res.sendFile(index);
-  res.status(404).send('Not found');
-});
-
-// Only listen locally. Vercel handles the serverless execution.
-if (process.env.NODE_ENV !== 'production') {
-  app.listen(PORT, () => console.log(`[server] Running locally at http://localhost:${PORT}`));
-}
-
 export default app;

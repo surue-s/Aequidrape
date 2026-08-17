@@ -1,15 +1,12 @@
 {
   "version": 2,
   "builds": [
-    {
-      "src": "src/server.ts",
-      "use": "@vercel/node"
-    }
+    { "src": "src/server.ts", "use": "@vercel/node" },
+    { "src": "public/**", "use": "@vercel/static" }
   ],
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "src/server.ts"
-    }
+    { "src": "/api/(.*)", "dest": "src/server.ts" },
+    { "src": "/vto-cache/(.*)", "dest": "src/server.ts" },
+    { "src": "/(.*)", "dest": "/public/$1" }
   ]
 }
