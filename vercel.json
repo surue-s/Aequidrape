@@ -1,12 +1,18 @@
 {
   "version": 2,
-  "functions": {
-    "src/server.ts": {
-      "maxDuration": 60,
-      "includeFiles": "public/**,data/**"
+  "builds": [
+    {
+      "src": "src/server.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": "public/**,data/**"
+      }
     }
-  },
-  "rewrites": [
-    { "source": "/(.*)", "destination": "src/server.ts" }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "src/server.ts"
+    }
   ]
 }
